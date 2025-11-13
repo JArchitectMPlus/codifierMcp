@@ -1,0 +1,301 @@
+# CodifierMcp Development Rules
+# Best practices and patterns captured from Phase 1 implementation
+
+rules:
+  - id: "R001"
+    category: "code-quality"
+    title: "Production-Ready Code Only"
+    description: "All code should be production-ready with no placeholders, TODOs, or stub implementations. Every function must be fully implemented with proper error handling, validation, and logging."
+    confidence: 1.0
+    patterns:
+      - "Implement complete error handling with custom error classes"
+      - "Use proper TypeScript types, avoid 'any' unless absolutely necessary"
+      - "Include descriptive logging at appropriate levels (debug, info, warn, error)"
+      - "Validate inputs using Zod schemas or TypeScript guards"
+      - "Handle edge cases and failure scenarios explicitly"
+    antipatterns:
+      - "Using placeholder functions like 'TODO: implement this'"
+      - "Leaving console.log statements without proper logging framework"
+      - "Using 'any' type without clear justification in comments"
+      - "Empty catch blocks that silently swallow errors"
+      - "Unvalidated user inputs or configuration values"
+    examples:
+      - "Good: Custom error classes with clear hierarchy (CodifierError -> DataStoreError -> ConfluenceError)"
+      - "Bad: try/catch with empty or generic catch block"
+      - "Good: Zod schema validation with clear error messages"
+      - "Bad: Direct use of process.env without validation"
+    metadata:
+      created: "2025-01-13"
+      priority: "high"
+      tags: ["code-quality", "production-readiness", "error-handling"]
+
+  - id: "R002"
+    category: "code-quality"
+    title: "Lean and Concise Implementations"
+    description: "Keep code lean and focused. Avoid over-engineering or adding unnecessary abstractions. Write code that solves the immediate problem without premature optimization or feature creep."
+    confidence: 1.0
+    patterns:
+      - "Write single-purpose functions with clear responsibilities"
+      - "Avoid premature optimization - optimize when profiling shows need"
+      - "Use built-in language features over external libraries when simple"
+      - "Keep class hierarchies shallow and focused"
+      - "Implement only features that are in the requirements"
+    antipatterns:
+      - "Creating complex inheritance hierarchies for simple tasks"
+      - "Adding features that aren't in requirements 'just in case'"
+      - "Over-abstracting with unnecessary interfaces or generics"
+      - "Premature caching or performance optimization"
+      - "Adding dependencies for simple tasks that could be done natively"
+    examples:
+      - "Good: Logger class with direct console.error calls, no complex framework"
+      - "Bad: Multiple abstraction layers for simple logging"
+      - "Good: IDataStore interface with only required methods"
+      - "Bad: Generic repository pattern with CRUD operations we don't need"
+    metadata:
+      created: "2025-01-13"
+      priority: "high"
+      tags: ["code-quality", "simplicity", "yagni"]
+
+  - id: "R003"
+    category: "mcp-protocol"
+    title: "MCP Protocol Best Practices"
+    description: "Follow MCP protocol conventions strictly. Use stderr for all logging since stdout is reserved for MCP protocol communication. Define clear tool schemas with proper validation."
+    confidence: 1.0
+    patterns:
+      - "Use console.error (stderr) for all logging, never console.log (stdout)"
+      - "Define tool schemas using Zod for runtime validation"
+      - "Provide clear, actionable error messages in tool responses"
+      - "Use proper MCP SDK types (Server, StdioServerTransport, CallToolRequestSchema)"
+      - "Handle MCP lifecycle events (initialize, cleanup)"
+    antipatterns:
+      - "Using console.log which pollutes stdout and breaks MCP protocol"
+      - "Returning unstructured error messages from MCP tools"
+      - "Missing input validation in tool handlers"
+      - "Not handling MCP transport errors gracefully"
+      - "Exposing internal error details to MCP clients"
+    examples:
+      - "Good: logger.error() uses console.error for MCP compatibility"
+      - "Bad: console.log('Debug info') breaks MCP communication"
+      - "Good: Zod schema validation before processing tool requests"
+      - "Bad: Assuming tool inputs are valid without validation"
+    metadata:
+      created: "2025-01-13"
+      priority: "critical"
+      tags: ["mcp", "protocol", "logging", "validation"]
+
+  - id: "R004"
+    category: "module-system"
+    title: "ESM Module System Consistency"
+    description: "Use ECMAScript Modules (ESM) consistently throughout the project. Include .js extensions in all import statements, even when importing TypeScript files."
+    confidence: 1.0
+    patterns:
+      - "Use 'type: module' in package.json"
+      - "Use import/export syntax, never require/module.exports"
+      - "Include .js extensions in all relative imports (import { x } from './file.js')"
+      - "Use ESNext module system in tsconfig.json"
+      - "Use top-level await when needed (available in ESM)"
+    antipatterns:
+      - "Mixing CommonJS require() with ESM import"
+      - "Omitting .js extensions from imports"
+      - "Using __dirname or __filename without ESM alternatives"
+      - "Setting 'type: commonjs' or omitting type field"
+      - "Using .ts extensions in imports"
+    examples:
+      - "Good: import { logger } from './utils/logger.js'"
+      - "Bad: import { logger } from './utils/logger' (missing .js)"
+      - "Good: import { logger } from './utils/logger.js'"
+      - "Bad: const logger = require('./utils/logger')"
+    metadata:
+      created: "2025-01-13"
+      priority: "high"
+      tags: ["esm", "modules", "typescript", "imports"]
+
+  - id: "R005"
+    category: "architecture"
+    title: "Clean Abstraction for Future Migration"
+    description: "Use interface-based abstractions to enable easy migration between storage backends. Keep implementation details in concrete classes, not interfaces."
+    confidence: 1.0
+    patterns:
+      - "Define clear interface contracts (IDataStore)"
+      - "Keep interface methods focused on business operations"
+      - "Document migration paths in interface comments"
+      - "Use dependency injection for swappable implementations"
+      - "Hide implementation-specific details behind the interface"
+    antipatterns:
+      - "Leaking implementation details into interface definitions"
+      - "Creating interfaces that are tightly coupled to one implementation"
+      - "Direct instantiation instead of dependency injection"
+      - "Implementation-specific types in interface signatures"
+      - "Bypassing the interface to access implementation details"
+    examples:
+      - "Good: IDataStore interface allows AtlassianDataStore or SupabaseDataStore"
+      - "Bad: Interface with Confluence-specific method signatures"
+      - "Good: fetchRules() returns generic Rule[] type"
+      - "Bad: fetchRules() returns ConfluencePage type"
+    metadata:
+      created: "2025-01-13"
+      priority: "high"
+      tags: ["architecture", "abstraction", "migration", "interfaces"]
+
+  - id: "R006"
+    category: "error-handling"
+    title: "Comprehensive Error Handling Standards"
+    description: "Use custom error classes with clear hierarchy. Log errors before throwing for debugging. Provide actionable error messages that help users fix issues."
+    confidence: 1.0
+    patterns:
+      - "Create error hierarchy (CodifierError as base class)"
+      - "Include error context (cause, toolName, content, etc.)"
+      - "Log errors before throwing for debugging trail"
+      - "Provide actionable error messages with guidance"
+      - "Use Error.captureStackTrace for clean stack traces"
+    antipatterns:
+      - "Throwing generic Error instances"
+      - "Error messages without context or guidance"
+      - "Catching errors without logging"
+      - "Swallowing errors silently in catch blocks"
+      - "Exposing internal error details to end users"
+    examples:
+      - "Good: throw new ConfluenceError('Failed to fetch page', originalError)"
+      - "Bad: throw new Error('Error occurred')"
+      - "Good: logger.error before throw for debugging context"
+      - "Bad: throw error without any logging"
+    metadata:
+      created: "2025-01-13"
+      priority: "high"
+      tags: ["error-handling", "logging", "debugging"]
+
+  - id: "R007"
+    category: "configuration"
+    title: "Robust Configuration Management"
+    description: "Use Zod for runtime validation of all configuration. Provide sensible defaults where appropriate. Document all environment variables with descriptions."
+    confidence: 1.0
+    patterns:
+      - "Define Zod schemas for all configuration"
+      - "Use .default() for optional config with sensible defaults"
+      - "Add .describe() to document each config field"
+      - "Validate early at application startup"
+      - "Cache validated config in singleton pattern"
+      - "Throw ConfigurationError with clear validation messages"
+    antipatterns:
+      - "Direct access to process.env without validation"
+      - "Undefined or missing defaults for optional config"
+      - "Configuration validation spread throughout codebase"
+      - "Unclear error messages for validation failures"
+      - "Re-parsing environment on every access"
+    examples:
+      - "Good: z.string().default('info').describe('Logging level')"
+      - "Bad: const level = process.env.LOG_LEVEL || 'info'"
+      - "Good: Centralized loadConfig() with Zod validation"
+      - "Bad: Scattered process.env checks throughout code"
+    metadata:
+      created: "2025-01-13"
+      priority: "high"
+      tags: ["configuration", "validation", "zod", "environment"]
+
+  - id: "R008"
+    category: "typescript"
+    title: "Strict TypeScript Configuration"
+    description: "Enable strict mode and proper compiler options. Use explicit types for function parameters and return values. Avoid implicit any."
+    confidence: 1.0
+    patterns:
+      - "Enable 'strict: true' in tsconfig.json"
+      - "Use explicit return types on all exported functions"
+      - "Define interfaces for complex object shapes"
+      - "Use type guards for runtime type checking"
+      - "Leverage TypeScript utility types (Record, Partial, Pick, etc.)"
+    antipatterns:
+      - "Implicit any from missing type annotations"
+      - "Using 'any' without justification"
+      - "Disabling strict mode or specific strict checks"
+      - "Missing return type annotations"
+      - "Using type assertions (as) to bypass type checking"
+    examples:
+      - "Good: export function loadConfig(): EnvConfig { ... }"
+      - "Bad: export function loadConfig() { ... } (no return type)"
+      - "Good: interface Rule with all properties typed"
+      - "Bad: const rule: any = { ... }"
+    metadata:
+      created: "2025-01-13"
+      priority: "high"
+      tags: ["typescript", "types", "strict-mode"]
+
+  - id: "R009"
+    category: "code-organization"
+    title: "Clear Module Organization"
+    description: "Organize code into logical modules with clear responsibilities. Keep related functionality together. Use barrel exports (index.ts) sparingly."
+    confidence: 1.0
+    patterns:
+      - "Group by feature/domain (config/, datastore/, utils/)"
+      - "Keep interfaces separate from implementations"
+      - "Use clear, descriptive file names"
+      - "One primary export per file (with exceptions for types)"
+      - "Avoid circular dependencies"
+    antipatterns:
+      - "Mixing unrelated functionality in one file"
+      - "Deeply nested directory structures"
+      - "Barrel exports that obscure dependencies"
+      - "Circular dependencies between modules"
+      - "God files with multiple unrelated exports"
+    examples:
+      - "Good: datastore/interface.ts and datastore/atlassian-datastore.ts"
+      - "Bad: datastore/index.ts with interface and all implementations"
+      - "Good: utils/logger.ts and utils/errors.ts as separate files"
+      - "Bad: utils.ts with logger, errors, and validators mixed"
+    metadata:
+      created: "2025-01-13"
+      priority: "medium"
+      tags: ["code-organization", "modules", "structure"]
+
+  - id: "R010"
+    category: "testing"
+    title: "Test-Friendly Design Patterns"
+    description: "Design code to be testable from the start. Use dependency injection, avoid singletons that can't be reset, and separate pure logic from side effects."
+    confidence: 0.9
+    patterns:
+      - "Use dependency injection for external dependencies"
+      - "Provide factory functions or constructors (avoid hard-coded singletons)"
+      - "Separate pure functions from side-effect functions"
+      - "Export helper functions for testing"
+      - "Design interfaces that can be mocked easily"
+    antipatterns:
+      - "Hard-coded singleton instances that can't be reset"
+      - "Direct import of singletons instead of dependency injection"
+      - "Mixing business logic with I/O operations"
+      - "Private methods that need testing but aren't testable"
+      - "Global state that persists across tests"
+    examples:
+      - "Good: export function resetConfig() for test cleanup"
+      - "Bad: Singleton with no way to reset state"
+      - "Good: IDataStore interface that can be mocked"
+      - "Bad: Direct Confluence API calls in business logic"
+    metadata:
+      created: "2025-01-13"
+      priority: "medium"
+      tags: ["testing", "testability", "design", "dependency-injection"]
+
+  - id: "R011"
+    category: "documentation"
+    title: "Inline Documentation Standards"
+    description: "Use JSDoc comments for all exported functions, interfaces, and types. Focus on why and context, not what (code should be self-explanatory for what)."
+    confidence: 1.0
+    patterns:
+      - "JSDoc comments for all public APIs"
+      - "Document parameters, return types, and thrown errors"
+      - "Explain the 'why' and 'when to use', not just 'what'"
+      - "Include examples in documentation for complex APIs"
+      - "Use @throws tags to document error conditions"
+    antipatterns:
+      - "Missing documentation on public APIs"
+      - "Documentation that just repeats the function name"
+      - "Outdated documentation that doesn't match implementation"
+      - "Over-documenting obvious implementation details"
+      - "Missing error condition documentation"
+    examples:
+      - "Good: /** Load and validate environment configuration. @throws {ConfigurationError} If validation fails */"
+      - "Bad: /** Loads config */ (too minimal)"
+      - "Good: Comments explain 'why' in complex logic"
+      - "Bad: Comments explain obvious code line-by-line"
+    metadata:
+      created: "2025-01-13"
+      priority: "medium"
+      tags: ["documentation", "jsdoc", "comments"]
