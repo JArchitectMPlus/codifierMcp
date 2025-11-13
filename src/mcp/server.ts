@@ -14,6 +14,8 @@ import {
 import { logger } from '../utils/logger.js';
 import { CodifierError } from '../utils/errors.js';
 import type { IDataStore } from '../datastore/interface.js';
+import { ContextService } from '../services/context-service.js';
+import { MemoryService } from '../services/memory-service.js';
 import { FetchContextTool, handleFetchContext } from './tools/fetch-context.js';
 import { UpdateMemoryTool, handleUpdateMemory } from './tools/update-memory.js';
 
@@ -36,6 +38,14 @@ export function createMcpServer(config: McpServerConfig): Server {
   logger.info('Creating MCP server', {
     name: config.name,
     version: config.version,
+  });
+
+  // Initialize service layers
+  const contextService = new ContextService(config.dataStore);
+  const memoryService = new MemoryService(config.dataStore);
+
+  logger.debug('Service layers instantiated', {
+    services: ['ContextService', 'MemoryService'],
   });
 
   const server = new Server(
@@ -70,10 +80,10 @@ export function createMcpServer(config: McpServerConfig): Server {
     try {
       switch (name) {
         case 'fetch_context':
-          return await handleFetchContext(args, config.dataStore);
+          return await handleFetchContext(args, contextService);
 
         case 'update_memory':
-          return await handleUpdateMemory(args, config.dataStore);
+          return await handleUpdateMemory(args, memoryService);
 
         default:
           throw new CodifierError(`Unknown tool: ${name}`);

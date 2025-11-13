@@ -6,8 +6,8 @@ import { z } from 'zod';
 import { UpdateMemoryParamsSchema, type UpdateMemoryParams } from '../schemas.js';
 import { logger } from '../../utils/logger.js';
 import { McpToolError } from '../../utils/errors.js';
-import type { IDataStore } from '../../datastore/interface.js';
-import type { Insight } from '../../datastore/types.js';
+import { MemoryService } from '../../services/memory-service.js';
+import type { SaveInsightItem } from '../../services/memory-service.js';
 
 /**
  * Tool definition for update_memory
@@ -68,17 +68,16 @@ export const UpdateMemoryTool = {
 /**
  * Handler for update_memory tool
  *
- * Note: This is a Phase 3 skeleton implementation. Full memory service
- * with rule extraction and graph updates will be implemented in Phase 4.
+ * Uses MemoryService for enhanced insight formatting and metadata enrichment.
  *
  * @param params - Validated tool parameters
- * @param dataStore - Data store instance for saving insights
+ * @param memoryService - Memory service instance for saving insights
  * @returns Tool response with save result
  * @throws {McpToolError} If memory update fails
  */
 export async function handleUpdateMemory(
   params: unknown,
-  dataStore: IDataStore
+  memoryService: MemoryService
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   try {
     logger.debug('update_memory called', params);
@@ -92,27 +91,29 @@ export async function handleUpdateMemory(
       metadata: validatedParams.metadata,
     });
 
-    // Convert schema insights to datastore Insight type
-    const insights: Insight[] = validatedParams.insights.map((insight) => ({
-      type: insight.type,
+    // Convert to MemoryService format
+    const insightItems: SaveInsightItem[] = validatedParams.insights.map((insight) => ({
+      title: insight.content.split('.')[0], // Use first sentence as title
       content: insight.content,
       category: insight.category,
+      type: insight.type,
+      tags: [], // Could be extracted from metadata in future
     }));
 
-    // Save insights using dataStore
-    const result = await dataStore.saveInsights({
-      insights,
-      context: validatedParams.context,
-      metadata: {
-        ...validatedParams.metadata,
-        timestamp: new Date().toISOString(),
+    // Use MemoryService for enhanced formatting
+    const result = await memoryService.saveInsights({
+      insights: insightItems,
+      context: {
+        source: validatedParams.context,
+        relatedRules: validatedParams.metadata?.relatedRules,
       },
+      metadata: validatedParams.metadata,
     });
 
     logger.info('Memory updated successfully', {
-      pageId: result.pageId,
-      pageTitle: result.pageTitle,
-      insightCount: result.insightCount,
+      pageId: result.savedPages[0]?.pageId,
+      totalSaved: result.metadata.totalSaved,
+      timestamp: result.metadata.timestamp,
     });
 
     // Format response for MCP client
@@ -123,6 +124,8 @@ export async function handleUpdateMemory(
       )
       .join('\n');
 
+    const savedPage = result.savedPages[0];
+
     const response = {
       content: [
         {
@@ -130,12 +133,15 @@ export async function handleUpdateMemory(
           text:
             `# Memory Updated Successfully\n\n` +
             `**Context:** ${validatedParams.context}\n` +
-            `**Insights Saved:** ${result.insightCount}\n` +
-            `**Page:** [${result.pageTitle}](${result.pageUrl})\n\n` +
+            `**Insights Saved:** ${result.metadata.totalSaved}\n` +
+            `**Timestamp:** ${result.metadata.timestamp}\n` +
+            (savedPage
+              ? `**Page:** [${savedPage.title}](${savedPage.url})\n\n`
+              : '\n') +
             `## Captured Insights:\n\n` +
             insightSummary +
             `\n\n---\n\n` +
-            `These insights have been saved to institutional memory and will be available for future context retrieval.`,
+            `These insights have been saved to institutional memory with enhanced metadata and will be available for future context retrieval.`,
         },
       ],
     };

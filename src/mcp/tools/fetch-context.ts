@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { FetchContextParamsSchema, type FetchContextParams } from '../schemas.js';
 import { logger } from '../../utils/logger.js';
 import { McpToolError } from '../../utils/errors.js';
-import type { IDataStore } from '../../datastore/interface.js';
+import { ContextService } from '../../services/context-service.js';
 
 /**
  * Tool definition for fetch_context
@@ -49,17 +49,16 @@ export const FetchContextTool = {
 /**
  * Handler for fetch_context tool
  *
- * Note: This is a Phase 3 skeleton implementation. Full context service
- * with semantic search and filtering will be implemented in Phase 4.
+ * Uses ContextService for advanced filtering, relevance scoring, and ranking.
  *
  * @param params - Validated tool parameters
- * @param dataStore - Data store instance for retrieving rules
+ * @param contextService - Context service instance for retrieving rules
  * @returns Tool response with fetched context
  * @throws {McpToolError} If context fetching fails
  */
 export async function handleFetchContext(
   params: unknown,
-  dataStore: IDataStore
+  contextService: ContextService
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   try {
     logger.debug('fetch_context called', params);
@@ -74,18 +73,18 @@ export async function handleFetchContext(
       category: validatedParams.category,
     });
 
-    // For MVP Phase 3: Basic implementation using dataStore.fetchRules
-    // Phase 4 will add: semantic search, document retrieval, API contract retrieval
-    const result = await dataStore.fetchRules({
+    // Use ContextService for advanced filtering and relevance scoring
+    const result = await contextService.fetchContext({
       query: validatedParams.query,
+      contextType: validatedParams.context_type,
       category: validatedParams.category,
       limit: validatedParams.limit,
     });
 
     logger.info('Context fetched successfully', {
       ruleCount: result.rules.length,
-      totalCount: result.totalCount,
-      source: result.source,
+      totalFound: result.metadata.totalFound,
+      filtered: result.metadata.filtered,
     });
 
     // Format response for MCP client
@@ -107,15 +106,23 @@ export async function handleFetchContext(
       )
       .join('\n---\n\n');
 
+    // Build metadata summary
+    const metadataSummary = [
+      `**Query:** ${validatedParams.query}`,
+      `**Context Type:** ${validatedParams.context_type}`,
+      validatedParams.category ? `**Category Filter:** ${validatedParams.category}` : null,
+      `**Results:** ${result.rules.length} of ${result.metadata.filtered} (total found: ${result.metadata.totalFound})`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
     const response = {
       content: [
         {
           type: 'text',
           text:
-            `# Institutional Memory - ${validatedParams.context_type}\n\n` +
-            `**Query:** ${validatedParams.query}\n` +
-            `**Results:** ${result.rules.length} of ${result.totalCount}\n` +
-            `**Source:** ${result.source}\n\n` +
+            `# Institutional Memory Context\n\n` +
+            `${metadataSummary}\n\n` +
             `---\n\n` +
             (formattedRules || 'No matching rules found.'),
         },
