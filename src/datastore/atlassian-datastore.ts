@@ -1,6 +1,6 @@
 /**
  * Atlassian Data Store implementation
- * Connects to Confluence via Atlassian MCP server tools
+ * Connects directly to Confluence via REST API
  */
 
 import { IDataStore } from './interface.js';
@@ -9,7 +9,6 @@ import {
   FetchRulesResult,
   SaveInsightsParams,
   SaveInsightsResult,
-  AtlassianResource,
 } from './types.js';
 import {
   parseRulesFromHtml,
@@ -18,35 +17,44 @@ import {
 } from './content-parser.js';
 import { ConfluenceError, DataStoreError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
-import { getConfig } from '../config/env.js';
+import { ConfluenceClient } from './confluence-client.js';
 
 /**
- * Implementation of IDataStore using Atlassian MCP tools
- *
- * IMPORTANT: This implementation assumes the Atlassian MCP server is configured
- * and accessible to the MCP client. The MCP client handles routing between servers.
- *
- * For MVP, we document that users must configure the Atlassian MCP server
- * alongside CodifierMcp in their MCP client configuration.
+ * Configuration for AtlassianDataStore
+ */
+export interface AtlassianDataStoreConfig {
+  baseUrl: string;
+  username: string;
+  apiToken: string;
+  spaceKey: string;
+  rulesPageTitle: string;
+  insightsParentPageTitle: string;
+}
+
+/**
+ * Implementation of IDataStore using direct Confluence REST API
  */
 export class AtlassianDataStore implements IDataStore {
-  private cloudId: string | null = null;
+  private confluenceClient: ConfluenceClient;
   private initialized = false;
-  private atlassianMcpTools: any; // MCP tools will be injected
+  private readonly spaceKey: string;
+  private readonly rulesPageTitle: string;
+  private readonly insightsParentPageTitle: string;
 
   /**
    * Create a new Atlassian data store instance
-   * @param mcpTools - MCP tools interface for calling Atlassian MCP tools
    */
-  constructor(mcpTools?: any) {
-    this.atlassianMcpTools = mcpTools;
-  }
+  constructor(config: AtlassianDataStoreConfig) {
+    this.spaceKey = config.spaceKey;
+    this.rulesPageTitle = config.rulesPageTitle;
+    this.insightsParentPageTitle = config.insightsParentPageTitle;
 
-  /**
-   * Set the MCP tools interface (for dependency injection)
-   */
-  setMcpTools(mcpTools: any): void {
-    this.atlassianMcpTools = mcpTools;
+    this.confluenceClient = new ConfluenceClient({
+      baseUrl: config.baseUrl,
+      username: config.username,
+      apiToken: config.apiToken,
+      spaceKey: config.spaceKey,
+    });
   }
 
   /**
@@ -61,18 +69,20 @@ export class AtlassianDataStore implements IDataStore {
     try {
       logger.info('Initializing AtlassianDataStore');
 
-      // Get cloudId from Atlassian MCP
-      this.cloudId = await this.getCloudId();
-
-      // Validate configuration
-      const config = getConfig();
-      if (!config.CONFLUENCE_SPACE_KEY) {
-        throw new DataStoreError('CONFLUENCE_SPACE_KEY not configured');
+      // Perform health check to verify connectivity
+      const isHealthy = await this.confluenceClient.healthCheck();
+      if (!isHealthy) {
+        throw new DataStoreError(
+          'Confluence health check failed - unable to connect'
+        );
       }
+
+      // Verify space exists
+      await this.confluenceClient.getSpace(this.spaceKey);
 
       this.initialized = true;
       logger.info('AtlassianDataStore initialized successfully', {
-        cloudId: this.cloudId,
+        spaceKey: this.spaceKey,
       });
     } catch (error) {
       const message =
@@ -90,9 +100,7 @@ export class AtlassianDataStore implements IDataStore {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      // Simple health check: try to get cloudId
-      const cloudId = await this.getCloudId();
-      return !!cloudId;
+      return await this.confluenceClient.healthCheck();
     } catch (error) {
       logger.warn('Health check failed', error);
       return false;
@@ -101,41 +109,10 @@ export class AtlassianDataStore implements IDataStore {
 
   /**
    * Get Atlassian Cloud ID
+   * This delegates to the ConfluenceClient
    */
   async getCloudId(): Promise<string> {
-    if (this.cloudId) {
-      return this.cloudId;
-    }
-
-    try {
-      logger.debug('Fetching Atlassian cloudId');
-
-      // Call Atlassian MCP tool to get accessible resources
-      const result = await this.callAtlassianMcpTool(
-        'mcp__atlassian__getAccessibleAtlassianResources',
-        {}
-      );
-
-      if (!result || !Array.isArray(result) || result.length === 0) {
-        throw new ConfluenceError(
-          'No accessible Atlassian resources found. Ensure Atlassian MCP is configured and you have access.'
-        );
-      }
-
-      // Use the first available resource
-      const resource = result[0] as AtlassianResource;
-      this.cloudId = resource.id;
-
-      logger.info('Retrieved Atlassian cloudId', { cloudId: this.cloudId });
-      return this.cloudId;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown error';
-      throw new ConfluenceError(
-        `Failed to get Atlassian cloudId: ${message}`,
-        error instanceof Error ? error : undefined
-      );
-    }
+    return await this.confluenceClient.getCloudId();
   }
 
   /**
@@ -149,54 +126,22 @@ export class AtlassianDataStore implements IDataStore {
     try {
       logger.info('Fetching rules from Confluence', params);
 
-      const config = getConfig();
-      const cloudId = await this.getCloudId();
+      // Search for the Rules page using CQL
+      const cql = `space="${this.spaceKey}" AND title="${this.rulesPageTitle}" AND type=page`;
+      const searchResult = await this.confluenceClient.searchPages(cql, 1);
 
-      // First, get the space to find the Rules page
-      const space = await this.callAtlassianMcpTool(
-        'mcp__atlassian__getConfluenceSpaces',
-        {
-          cloudId,
-          keys: [config.CONFLUENCE_SPACE_KEY],
-          limit: 1,
-        }
-      );
-
-      if (!space?.results || space.results.length === 0) {
+      if (!searchResult.results || searchResult.results.length === 0) {
         throw new ConfluenceError(
-          `Confluence space not found: ${config.CONFLUENCE_SPACE_KEY}`
+          `Rules page not found: "${this.rulesPageTitle}" in space ${this.spaceKey}`
         );
       }
 
-      const spaceId = space.results[0].id;
+      const rulesPage = searchResult.results[0];
 
-      // Search for the Rules page in the space
-      const pagesResult = await this.callAtlassianMcpTool(
-        'mcp__atlassian__getPagesInConfluenceSpace',
-        {
-          cloudId,
-          spaceId: String(spaceId),
-          title: config.RULES_PAGE_TITLE,
-          limit: 1,
-        }
-      );
-
-      if (!pagesResult?.results || pagesResult.results.length === 0) {
-        throw new ConfluenceError(
-          `Rules page not found: "${config.RULES_PAGE_TITLE}" in space ${config.CONFLUENCE_SPACE_KEY}`
-        );
-      }
-
-      const rulesPageId = pagesResult.results[0].id;
-
-      // Fetch the full page content
-      const page = await this.callAtlassianMcpTool(
-        'mcp__atlassian__getConfluencePage',
-        {
-          cloudId,
-          pageId: rulesPageId,
-        }
-      );
+      // Get full page content if not already expanded
+      const page = rulesPage.body?.storage?.value
+        ? rulesPage
+        : await this.confluenceClient.getPage(rulesPage.id);
 
       if (!page?.body?.storage?.value) {
         throw new ConfluenceError('Rules page has no content');
@@ -240,7 +185,7 @@ export class AtlassianDataStore implements IDataStore {
       return {
         rules: filteredRules,
         totalCount: rules.length,
-        source: `Confluence: ${config.CONFLUENCE_SPACE_KEY}/${config.RULES_PAGE_TITLE}`,
+        source: `Confluence: ${this.spaceKey}/${this.rulesPageTitle}`,
       };
     } catch (error) {
       if (error instanceof ConfluenceError) {
@@ -273,32 +218,11 @@ export class AtlassianDataStore implements IDataStore {
         context: params.context,
       });
 
-      const config = getConfig();
-      const cloudId = await this.getCloudId();
-
       // Get the space
-      const space = await this.callAtlassianMcpTool(
-        'mcp__atlassian__getConfluenceSpaces',
-        {
-          cloudId,
-          keys: [config.CONFLUENCE_SPACE_KEY],
-          limit: 1,
-        }
-      );
-
-      if (!space?.results || space.results.length === 0) {
-        throw new ConfluenceError(
-          `Confluence space not found: ${config.CONFLUENCE_SPACE_KEY}`
-        );
-      }
-
-      const spaceId = space.results[0].id;
+      const space = await this.confluenceClient.getSpace(this.spaceKey);
 
       // Check if parent page exists, create if needed
-      const parentPageId = await this.ensureParentPageExists(
-        cloudId,
-        String(spaceId)
-      );
+      const parentPageId = await this.ensureParentPageExists();
 
       // Generate page title
       const pageTitle = generateInsightPageTitle(
@@ -314,32 +238,27 @@ export class AtlassianDataStore implements IDataStore {
       );
 
       // Create the insights page
-      const result = await this.callAtlassianMcpTool(
-        'mcp__atlassian__createConfluencePage',
-        {
-          cloudId,
-          spaceId: String(spaceId),
-          parentId: parentPageId,
-          title: pageTitle,
-          body: htmlContent,
-        }
-      );
-
-      if (!result?.id) {
-        throw new ConfluenceError('Failed to create insights page');
-      }
+      const page = await this.confluenceClient.createPage({
+        spaceKey: this.spaceKey,
+        title: pageTitle,
+        body: htmlContent,
+        parentId: parentPageId,
+      });
 
       // Construct page URL
-      const pageUrl = `${space.results[0]._links?.base || 'https://your-domain.atlassian.net/wiki'}/pages/${result.id}`;
+      const baseUrl = space._links?.base || this.confluenceClient.baseUrl;
+      const pageUrl = page._links?.webui
+        ? `${baseUrl}${page._links.webui}`
+        : `${baseUrl}/pages/${page.id}`;
 
       logger.info('Successfully saved insights to Confluence', {
-        pageId: result.id,
+        pageId: page.id,
         pageTitle,
       });
 
       return {
         success: true,
-        pageId: result.id,
+        pageId: page.id,
         pageTitle,
         pageUrl,
         insightCount: params.insights.length,
@@ -363,106 +282,37 @@ export class AtlassianDataStore implements IDataStore {
    * Ensure the parent page for insights exists
    * Creates it if it doesn't exist
    */
-  private async ensureParentPageExists(
-    cloudId: string,
-    spaceId: string
-  ): Promise<string> {
-    const config = getConfig();
-
+  private async ensureParentPageExists(): Promise<string> {
     try {
-      // Check if parent page exists
-      const pagesResult = await this.callAtlassianMcpTool(
-        'mcp__atlassian__getPagesInConfluenceSpace',
-        {
-          cloudId,
-          spaceId,
-          title: config.INSIGHTS_PARENT_PAGE_TITLE,
-          limit: 1,
-        }
-      );
+      // Check if parent page exists using CQL
+      const cql = `space="${this.spaceKey}" AND title="${this.insightsParentPageTitle}" AND type=page`;
+      const searchResult = await this.confluenceClient.searchPages(cql, 1);
 
-      if (pagesResult?.results && pagesResult.results.length > 0) {
+      if (searchResult?.results && searchResult.results.length > 0) {
         logger.debug('Parent page exists', {
-          pageId: pagesResult.results[0].id,
+          pageId: searchResult.results[0].id,
         });
-        return pagesResult.results[0].id;
+        return searchResult.results[0].id;
       }
 
       // Parent page doesn't exist, create it
       logger.info('Creating parent page for insights', {
-        title: config.INSIGHTS_PARENT_PAGE_TITLE,
+        title: this.insightsParentPageTitle,
       });
 
-      const result = await this.callAtlassianMcpTool(
-        'mcp__atlassian__createConfluencePage',
-        {
-          cloudId,
-          spaceId,
-          title: config.INSIGHTS_PARENT_PAGE_TITLE,
-          body: '<p>This page contains captured insights from AI-driven development sessions.</p>',
-        }
-      );
+      const page = await this.confluenceClient.createPage({
+        spaceKey: this.spaceKey,
+        title: this.insightsParentPageTitle,
+        body: '<p>This page contains captured insights from AI-driven development sessions.</p>',
+      });
 
-      if (!result?.id) {
-        throw new ConfluenceError('Failed to create parent page');
-      }
-
-      logger.info('Created parent page', { pageId: result.id });
-      return result.id;
+      logger.info('Created parent page', { pageId: page.id });
+      return page.id;
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unknown error';
       throw new ConfluenceError(
         `Failed to ensure parent page exists: ${message}`,
-        error instanceof Error ? error : undefined
-      );
-    }
-  }
-
-  /**
-   * Call an Atlassian MCP tool
-   *
-   * For MVP: This method throws an informative error if Atlassian MCP tools
-   * are not available. In a production setup, the MCP client should handle
-   * routing between MCP servers.
-   */
-  private async callAtlassianMcpTool(
-    toolName: string,
-    args: Record<string, any>
-  ): Promise<any> {
-    logger.debug('Calling Atlassian MCP tool', { toolName, args });
-
-    if (!this.atlassianMcpTools) {
-      throw new ConfluenceError(
-        `Atlassian MCP tools not available. Ensure the Atlassian MCP server is configured in your MCP client alongside CodifierMcp.
-
-Configuration example (for Claude Desktop):
-{
-  "mcpServers": {
-    "atlassian": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-atlassian"]
-    },
-    "codifier": {
-      "command": "node",
-      "args": ["/absolute/path/to/codifierMcp/dist/index.js"]
-    }
-  }
-}`
-      );
-    }
-
-    try {
-      // Call the MCP tool through the provided interface
-      const result = await this.atlassianMcpTools.callTool(toolName, args);
-      logger.debug('Atlassian MCP tool call succeeded', { toolName });
-      return result;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Atlassian MCP tool call failed', { toolName, error: message });
-      throw new ConfluenceError(
-        `Atlassian MCP tool "${toolName}" failed: ${message}`,
         error instanceof Error ? error : undefined
       );
     }

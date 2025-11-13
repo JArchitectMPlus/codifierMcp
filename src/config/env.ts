@@ -10,6 +10,22 @@ import { logger, LogLevel } from '../utils/logger.js';
  * Environment configuration schema
  */
 const envSchema = z.object({
+  // Confluence Authentication
+  CONFLUENCE_BASE_URL: z
+    .string()
+    .url('CONFLUENCE_BASE_URL must be a valid URL')
+    .describe('Confluence base URL (e.g., https://yoursite.atlassian.net)'),
+
+  CONFLUENCE_USERNAME: z
+    .string()
+    .email('CONFLUENCE_USERNAME must be a valid email')
+    .describe('Confluence username (email address)'),
+
+  CONFLUENCE_API_TOKEN: z
+    .string()
+    .min(1, 'CONFLUENCE_API_TOKEN is required')
+    .describe('Confluence API token for authentication'),
+
   // Confluence Configuration
   CONFLUENCE_SPACE_KEY: z
     .string()
