@@ -2,7 +2,7 @@
 
 **Institutional Memory for AI-Driven Development**
 
-CodifierMcp is an MCP (Model Context Protocol) server that enables AI assistants like Claude to access and update organizational knowledge stored in Confluence Cloud. It creates a self-reinforcing feedback loop where AI assistants learn from your team's development patterns, architectural decisions, and best practices.
+CodifierMcp is an MCP (Model Context Protocol) server that enables AI assistants like Claude to access and update stored organizational knowledge. It creates a self-reinforcing feedback loop where AI assistants learn from your team's development patterns, architectural decisions, and best practices.
 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.5.3-blue)](https://www.typescriptlang.org/)
