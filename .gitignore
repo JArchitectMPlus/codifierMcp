@@ -14,6 +14,9 @@ yarn-error.log*
 # Environment variables
 .env
 
+# Supabase local state
+supabase/.temp/
+
 # macOS
 .DS_Store
 /.idea/codifierMcp.iml
