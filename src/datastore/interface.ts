@@ -17,11 +17,11 @@ import {
  */
 export interface IDataStore {
   /**
-   * Get the Atlassian Cloud ID for making API calls
-   * @returns Promise resolving to the cloud ID
-   * @throws {DataStoreError} If unable to retrieve cloud ID
+   * Get the backend-specific store identifier
+   * @returns Promise resolving to the store ID (e.g., Atlassian Cloud ID, Supabase project ref)
+   * @throws {DataStoreError} If unable to retrieve store ID
    */
-  getCloudId(): Promise<string>;
+  getStoreId(): Promise<string>;
 
   /**
    * Fetch rules from the institutional memory

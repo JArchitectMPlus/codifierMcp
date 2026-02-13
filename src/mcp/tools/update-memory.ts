@@ -17,7 +17,7 @@ export const UpdateMemoryTool = {
   description:
     'Save new learnings and insights to institutional memory. ' +
     'Use this to capture patterns, antipatterns, best practices, and architectural decisions ' +
-    'discovered during development. Creates a timestamped insight page in Confluence.',
+    'discovered during development. Saves insights to the configured data store.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -111,7 +111,7 @@ export async function handleUpdateMemory(
     });
 
     logger.info('Memory updated successfully', {
-      pageId: result.savedPages[0]?.pageId,
+      recordId: result.savedRecords[0]?.recordId,
       totalSaved: result.metadata.totalSaved,
       timestamp: result.metadata.timestamp,
     });
@@ -124,7 +124,7 @@ export async function handleUpdateMemory(
       )
       .join('\n');
 
-    const savedPage = result.savedPages[0];
+    const savedRecord = result.savedRecords[0];
 
     const response = {
       content: [
@@ -135,9 +135,11 @@ export async function handleUpdateMemory(
             `**Context:** ${validatedParams.context}\n` +
             `**Insights Saved:** ${result.metadata.totalSaved}\n` +
             `**Timestamp:** ${result.metadata.timestamp}\n` +
-            (savedPage
-              ? `**Page:** [${savedPage.title}](${savedPage.url})\n\n`
-              : '\n') +
+            (savedRecord && savedRecord.url
+              ? `**Page:** [${savedRecord.title}](${savedRecord.url})\n\n`
+              : savedRecord
+                ? `**Record:** ${savedRecord.title}\n\n`
+                : '\n') +
             `## Captured Insights:\n\n` +
             insightSummary +
             `\n\n---\n\n` +

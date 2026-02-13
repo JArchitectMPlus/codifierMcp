@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.git
+.claude
+*.md
+!README.md
+.DS_Store
+supabase
+scripts

@@ -108,10 +108,10 @@ export class AtlassianDataStore implements IDataStore {
   }
 
   /**
-   * Get Atlassian Cloud ID
+   * Get Atlassian Cloud ID (store identifier for this backend)
    * This delegates to the ConfluenceClient
    */
-  async getCloudId(): Promise<string> {
+  async getStoreId(): Promise<string> {
     return await this.confluenceClient.getCloudId();
   }
 
@@ -258,9 +258,9 @@ export class AtlassianDataStore implements IDataStore {
 
       return {
         success: true,
-        pageId: page.id,
-        pageTitle,
-        pageUrl,
+        recordId: page.id,
+        recordTitle: pageTitle,
+        recordUrl: pageUrl,
         insightCount: params.insights.length,
       };
     } catch (error) {

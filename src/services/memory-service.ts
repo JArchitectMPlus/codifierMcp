@@ -43,22 +43,22 @@ export interface SaveInsightOptions {
 }
 
 /**
- * Information about a saved insight page
+ * Information about a saved insight record
  */
-export interface SavedPageInfo {
+export interface SavedRecordInfo {
   title: string;
   url?: string;
-  pageId: string;
+  recordId: string;
 }
 
 /**
  * Result of saving insights
  */
 export interface MemoryServiceResult {
-  savedPages: SavedPageInfo[];
+  savedRecords: SavedRecordInfo[];
   metadata: {
     totalSaved: number;
-    parentPageId?: string;
+    parentRecordId?: string;
     timestamp: string;
   };
 }
@@ -103,16 +103,16 @@ export class MemoryService {
       });
 
       logger.info('Insights saved successfully', {
-        pageId: result.pageId,
+        recordId: result.recordId,
         insightCount: result.insightCount,
       });
 
       return {
-        savedPages: [
+        savedRecords: [
           {
-            title: result.pageTitle,
-            url: result.pageUrl,
-            pageId: result.pageId,
+            title: result.recordTitle,
+            url: result.recordUrl,
+            recordId: result.recordId,
           },
         ],
         metadata: {

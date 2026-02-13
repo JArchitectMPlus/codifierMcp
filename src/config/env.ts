@@ -10,26 +10,54 @@ import { logger, LogLevel } from '../utils/logger.js';
  * Environment configuration schema
  */
 const envSchema = z.object({
-  // Confluence Authentication
+  // Data Store Selection
+  DATA_STORE: z
+    .enum(['confluence', 'supabase'])
+    .default('supabase')
+    .describe('Data store backend: supabase (default) or confluence'),
+
+  // Supabase Configuration
+  SUPABASE_URL: z
+    .string()
+    .url('SUPABASE_URL must be a valid URL')
+    .optional()
+    .describe('Supabase project URL (e.g., https://abc123.supabase.co)'),
+
+  SUPABASE_SERVICE_ROLE_KEY: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Supabase service role key for server-side access'),
+
+  SUPABASE_PROJECT_ID: z
+    .string()
+    .optional()
+    .describe('Supabase project ID (UUID). If omitted, auto-creates a default project'),
+
+  // Confluence Authentication (optional — only needed when DATA_STORE=confluence)
   CONFLUENCE_BASE_URL: z
     .string()
     .url('CONFLUENCE_BASE_URL must be a valid URL')
+    .optional()
     .describe('Confluence base URL (e.g., https://yoursite.atlassian.net)'),
 
   CONFLUENCE_USERNAME: z
     .string()
     .email('CONFLUENCE_USERNAME must be a valid email')
+    .optional()
     .describe('Confluence username (email address)'),
 
   CONFLUENCE_API_TOKEN: z
     .string()
     .min(1, 'CONFLUENCE_API_TOKEN is required')
+    .optional()
     .describe('Confluence API token for authentication'),
 
   // Confluence Configuration
   CONFLUENCE_SPACE_KEY: z
     .string()
     .min(1, 'CONFLUENCE_SPACE_KEY is required')
+    .optional()
     .describe('The space key for the Confluence workspace (e.g., "TT")'),
 
   RULES_PAGE_TITLE: z
@@ -47,6 +75,83 @@ const envSchema = z.object({
     .enum(['debug', 'info', 'warn', 'error'])
     .default('info')
     .describe('Logging level'),
+
+  // Transport Configuration
+  TRANSPORT_MODE: z
+    .enum(['stdio', 'http'])
+    .default('stdio')
+    .describe('Transport mode: stdio for local use, http for remote server'),
+
+  HTTP_PORT: z
+    .coerce.number()
+    .int()
+    .positive()
+    .default(3000)
+    .describe('HTTP server port (used when TRANSPORT_MODE=http)'),
+
+  API_AUTH_TOKEN: z
+    .string()
+    .optional()
+    .describe('API authentication token (required when TRANSPORT_MODE=http)'),
+}).superRefine((data, ctx) => {
+  // Conditional validation: Supabase fields required when DATA_STORE=supabase
+  if (data.DATA_STORE === 'supabase') {
+    if (!data.SUPABASE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'SUPABASE_URL is required when DATA_STORE is supabase',
+        path: ['SUPABASE_URL'],
+      });
+    }
+    if (!data.SUPABASE_SERVICE_ROLE_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'SUPABASE_SERVICE_ROLE_KEY is required when DATA_STORE is supabase',
+        path: ['SUPABASE_SERVICE_ROLE_KEY'],
+      });
+    }
+  }
+
+  // Conditional validation: Confluence fields required when DATA_STORE=confluence
+  if (data.DATA_STORE === 'confluence') {
+    if (!data.CONFLUENCE_BASE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CONFLUENCE_BASE_URL is required when DATA_STORE is confluence',
+        path: ['CONFLUENCE_BASE_URL'],
+      });
+    }
+    if (!data.CONFLUENCE_USERNAME) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CONFLUENCE_USERNAME is required when DATA_STORE is confluence',
+        path: ['CONFLUENCE_USERNAME'],
+      });
+    }
+    if (!data.CONFLUENCE_API_TOKEN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CONFLUENCE_API_TOKEN is required when DATA_STORE is confluence',
+        path: ['CONFLUENCE_API_TOKEN'],
+      });
+    }
+    if (!data.CONFLUENCE_SPACE_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CONFLUENCE_SPACE_KEY is required when DATA_STORE is confluence',
+        path: ['CONFLUENCE_SPACE_KEY'],
+      });
+    }
+  }
+
+  // Conditional validation: API_AUTH_TOKEN required when TRANSPORT_MODE is http
+  if (data.TRANSPORT_MODE === 'http' && !data.API_AUTH_TOKEN) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'API_AUTH_TOKEN is required when TRANSPORT_MODE is http',
+      path: ['API_AUTH_TOKEN'],
+    });
+  }
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

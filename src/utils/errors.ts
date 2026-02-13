@@ -34,6 +34,16 @@ export class ConfluenceError extends DataStoreError {
 }
 
 /**
+ * Error thrown when Supabase operations fail
+ */
+export class SupabaseError extends DataStoreError {
+  constructor(message: string, cause?: Error) {
+    super(message, cause);
+    this.name = 'SupabaseError';
+  }
+}
+
+/**
  * Error thrown when configuration is invalid or missing
  */
 export class ConfigurationError extends CodifierError {

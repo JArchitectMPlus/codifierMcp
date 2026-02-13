@@ -68,9 +68,9 @@ export interface InsightMetadata {
  */
 export interface SaveInsightsResult {
   success: boolean;
-  pageId: string;
-  pageTitle: string;
-  pageUrl: string;
+  recordId: string;
+  recordTitle: string;
+  recordUrl?: string;
   insightCount: number;
 }
 
@@ -92,31 +92,3 @@ export interface FetchRulesResult {
   source: string;
 }
 
-/**
- * Confluence page information
- */
-export interface ConfluencePage {
-  id: string;
-  title: string;
-  body: {
-    storage: {
-      value: string; // HTML content
-      representation: 'storage';
-    };
-  };
-  version?: {
-    number: number;
-  };
-  metadata?: any;
-}
-
-/**
- * Atlassian resource information
- */
-export interface AtlassianResource {
-  id: string; // cloudId
-  url: string;
-  name: string;
-  scopes: string[];
-  avatarUrl?: string;
-}

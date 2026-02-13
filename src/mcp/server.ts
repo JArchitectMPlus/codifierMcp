@@ -112,36 +112,36 @@ export function createMcpServer(config: McpServerConfig): Server {
 }
 
 /**
- * Start the MCP server with stdio transport
+ * Connect the MCP server to stdio transport
  *
  * @param server - MCP server instance
- * @throws {CodifierError} If server fails to start
+ * @throws {CodifierError} If transport connection fails
  */
-export async function startMcpServer(server: Server): Promise<void> {
+export async function connectStdioTransport(server: Server): Promise<void> {
   try {
-    logger.info('Starting MCP server with stdio transport');
+    logger.info('Connecting MCP server to stdio transport');
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
 
-    logger.info('MCP server started successfully');
+    logger.info('MCP server connected to stdio transport successfully');
     logger.info('Listening for MCP protocol messages on stdio');
   } catch (error) {
-    logger.error('Failed to start MCP server', {
+    logger.error('Failed to connect stdio transport', {
       error: error instanceof Error ? error.message : 'Unknown error',
     });
 
     throw new CodifierError(
-      `Failed to start MCP server: ${error instanceof Error ? error.message : 'Unknown error'}`
+      `Failed to connect stdio transport: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
   }
 }
 
 /**
- * Initialize and start the MCP server
+ * Initialize the MCP server and data store (transport-agnostic)
  *
  * @param config - Server configuration
- * @returns Running server instance
+ * @returns Configured server instance (not yet connected to transport)
  */
 export async function initializeMcpServer(config: McpServerConfig): Promise<Server> {
   logger.info('Initializing MCP server');
@@ -157,9 +157,8 @@ export async function initializeMcpServer(config: McpServerConfig): Promise<Serv
   }
   logger.info('Data store initialized and healthy');
 
-  // Create and start server
+  // Create server (without connecting to transport)
   const server = createMcpServer(config);
-  await startMcpServer(server);
 
   return server;
 }

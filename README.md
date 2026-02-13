@@ -22,6 +22,12 @@ CodifierMcp is an MCP (Model Context Protocol) server that enables AI assistants
   - [Environment Variables](#environment-variables)
   - [Confluence Setup](#confluence-setup)
   - [MCP Client Configuration](#mcp-client-configuration)
+- [Remote Server (HTTP Mode)](#remote-server-http-mode)
+  - [Quick Start](#quick-start-remote-server)
+  - [Authentication](#authentication)
+  - [Endpoints](#endpoints)
+  - [Connecting MCP Clients to Remote Server](#connecting-mcp-clients-to-remote-server)
+  - [SSE Legacy Transport](#sse-legacy-transport)
 - [Testing Instructions](#testing-instructions)
   - [Test 1: Verify Build](#test-1-verify-build)
   - [Test 2: Verify Configuration](#test-2-verify-configuration)
@@ -56,30 +62,34 @@ This creates a virtuous cycle where your AI assistant becomes increasingly famil
 - **Semantic Rule Retrieval**: Find relevant organizational rules using text matching and relevance scoring
 - **Context Filtering**: Filter rules by category (security, testing, architecture, etc.)
 - **Automatic Metadata Enrichment**: Insights are automatically tagged with timestamps and cross-references
+- **Dual Transport**: Run locally via stdio or deploy remotely via HTTP (StreamableHTTP + SSE fallback)
 - **Production-Ready**: Built with comprehensive error handling, logging, and validation
 - **Clean Architecture**: Interface-based design enables future migration to advanced backends (vector search, knowledge graphs)
 
 ### Architecture
 
+CodifierMcp supports dual transport modes and dual data stores:
+
 ```
 ┌─────────────────────────────────────────┐
 │   MCP Clients                           │
 │   (Claude Desktop, GitHub Copilot, etc.)│
-└──────────────┬──────────────────────────┘
-               │ stdio transport (MCP protocol)
-               ↓
+└──────┬───────────────────┬──────────────┘
+       │ stdio (local)     │ HTTP (remote)
+       ↓                   ↓
 ┌─────────────────────────────────────────┐
 │   CodifierMcp Server                    │
+│   ├── Transport: stdio | StreamableHTTP │
 │   ├── ContextService (rule retrieval)   │
 │   ├── MemoryService (insight storage)   │
-│   └── AtlassianDataStore                │
-└──────────────┬──────────────────────────┘
-               │ REST API (Basic Auth)
-               ↓
-┌─────────────────────────────────────────┐
-│   Confluence Cloud                      │
-│   (Institutional memory storage)        │
-└─────────────────────────────────────────┘
+│   └── Factory: createDataStore(config)  │
+└──────┬─────────────────────┬────────────┘
+       │ default             │ optional
+       ↓                     ↓
+┌──────────────────┐  ┌──────────────────┐
+│ SupabaseDataStore│  │AtlassianDataStore│
+│ (PostgreSQL)     │  │ (Confluence)     │
+└──────────────────┘  └──────────────────┘
 ```
 
 **Core Components:**
@@ -87,8 +97,9 @@ This creates a virtuous cycle where your AI assistant becomes increasingly famil
 - **MCP Server**: Implements the Model Context Protocol for standardized AI integration
 - **ContextService**: Advanced rule retrieval with relevance scoring and filtering
 - **MemoryService**: Insight storage with automatic metadata enrichment
+- **DataStore Factory**: Switches between Supabase (default) and Confluence (optional)
+- **SupabaseDataStore**: PostgreSQL with pgvector integration
 - **AtlassianDataStore**: Confluence REST API integration with YAML parsing
-- **ConfluenceClient**: HTTP client with authentication and error handling
 
 ### Use Cases
 
@@ -102,42 +113,71 @@ This creates a virtuous cycle where your AI assistant becomes increasingly famil
 
 ## Prerequisites
 
-Before installing CodifierMcp, ensure you have:
+### Quick Remote Install (Recommended)
+
+For instant setup with remote deployment:
+
+1. **Supabase Account** (free tier available)
+   - Sign up at: [supabase.com](https://supabase.com/)
+   - Create a new project
+   - Note your Project URL and Service Role Key
+
+2. **MCP-Compatible AI Client** (one of):
+   - Claude Desktop (recommended)
+   - Claude Code CLI
+   - Any MCP-compatible AI assistant
+
+**One-liner remote install:**
+```bash
+claude mcp add --transport http codifier https://codifier-mcp.fly.dev/mcp --header "Authorization: Bearer <your-token>"
+```
+
+### Local Installation Prerequisites
+
+For local development or self-hosting:
 
 1. **Node.js 18 or higher** (required for native `fetch` API)
    - Check your version: `node --version`
    - Download from: [nodejs.org](https://nodejs.org/)
 
-2. **Confluence Cloud Account**
-   - Free tier or paid subscription
+2. **Supabase Project** (default data store)
+   - Free tier available at: [supabase.com](https://supabase.com/)
+   - Project URL and Service Role Key required
+
+3. **(Optional) Confluence Cloud Account** (legacy data store)
+   - Only needed if using `DATA_STORE=confluence`
+   - Requires API token and space permissions
    - Sign up at: [atlassian.com/software/confluence](https://www.atlassian.com/software/confluence)
-
-3. **Confluence Space with Appropriate Permissions**
-   - View space permission (to read rules)
-   - Create page permission (to save insights)
-   - Edit page permission (to update insights)
-
-4. **Confluence API Token**
-   - Generate at: [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
-   - Keep this token secure - it provides access to your Confluence space
-
-5. **MCP-Compatible AI Client** (one of):
-   - Claude Desktop (recommended for testing)
-   - GitHub Copilot with MCP support
-   - Any other MCP-compatible AI assistant
 
 ---
 
 ## Installation
 
-### Step 1: Clone the Repository
+### Remote Install (Fastest)
+
+Install the remote server with one command:
+
+```bash
+# Claude Code CLI
+claude mcp add --transport http codifier https://codifier-mcp.fly.dev/mcp --header "Authorization: Bearer <your-token>"
+
+# Or add to Claude Desktop config manually
+```
+
+No local build required. Skip to [Configuration](#configuration) for environment setup.
+
+### Local Install
+
+For self-hosting or development:
+
+#### Step 1: Clone the Repository
 
 ```bash
 git clone https://github.com/yourusername/codifierMcp.git
 cd codifierMcp
 ```
 
-### Step 2: Install Dependencies
+#### Step 2: Install Dependencies
 
 ```bash
 npm install
@@ -145,11 +185,13 @@ npm install
 
 This installs:
 - `@modelcontextprotocol/sdk`: MCP protocol implementation
-- `zod`: Runtime validation for configuration and data
-- `js-yaml`: YAML parsing for rules
+- `@supabase/supabase-js`: Supabase client
+- `express`: HTTP server
+- `zod`: Runtime validation
+- `js-yaml`: YAML parsing (for Confluence)
 - TypeScript and type definitions
 
-### Step 3: Build the Project
+#### Step 3: Build the Project
 
 ```bash
 npm run build
@@ -172,7 +214,7 @@ ls -la dist/
 
 You should see:
 - `index.js` (main entry point)
-- `config/`, `datastore/`, `services/`, `utils/` directories
+- `config/`, `datastore/`, `http/`, `mcp/`, `services/`, `utils/` directories
 
 ---
 
@@ -206,44 +248,65 @@ code .env
 #### Step 3: Configure Variables
 
 ```bash
-# Confluence Cloud Authentication
-# Your Confluence Cloud base URL (e.g., https://yoursite.atlassian.net)
-CONFLUENCE_BASE_URL=https://yoursite.atlassian.net
+# Data Store Selection
+# Choose "supabase" (default) or "confluence"
+DATA_STORE=supabase
 
-# Your Confluence username (email address)
-CONFLUENCE_USERNAME=your-email@example.com
+# Supabase Configuration (required if DATA_STORE=supabase)
+# Your Supabase project URL
+SUPABASE_URL=https://your-project.supabase.co
 
-# Your Confluence API token
-# Generate one at: https://id.atlassian.com/manage-profile/security/api-tokens
-CONFLUENCE_API_TOKEN=your-api-token-here
+# Your Supabase service role key (not anon key)
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-# Confluence Space and Page Settings
-# The space key for your Confluence workspace (e.g., "TT" for Triple Threat)
-CONFLUENCE_SPACE_KEY=TT
+# Transport Mode
+# "stdio" for local MCP clients, "http" for remote access
+TRANSPORT_MODE=stdio
 
-# The title of the page containing your rules (in YAML format)
-RULES_PAGE_TITLE=Rules
+# HTTP Configuration (required if TRANSPORT_MODE=http)
+# Port for HTTP server
+HTTP_PORT=3000
 
-# The title of the parent page where insights will be saved
-# This page will be auto-created if it doesn't exist
-INSIGHTS_PARENT_PAGE_TITLE=Memory Insights
+# Bearer token for authentication (generate with: openssl rand -base64 32)
+API_AUTH_TOKEN=your-secure-random-token
 
 # Application Settings
 # Logging Level: debug, info, warn, error
 LOG_LEVEL=info
 ```
 
+#### Confluence Configuration (Optional)
+
+Only needed if using `DATA_STORE=confluence`:
+
+```bash
+# Confluence Cloud Authentication
+CONFLUENCE_BASE_URL=https://yoursite.atlassian.net
+CONFLUENCE_USERNAME=your-email@example.com
+CONFLUENCE_API_TOKEN=your-api-token-here
+
+# Confluence Space and Page Settings
+CONFLUENCE_SPACE_KEY=TT
+RULES_PAGE_TITLE=Rules
+INSIGHTS_PARENT_PAGE_TITLE=Memory Insights
+```
+
 #### Variable Descriptions
 
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
-| `CONFLUENCE_BASE_URL` | Yes | Your Confluence Cloud instance URL | `https://mycompany.atlassian.net` |
-| `CONFLUENCE_USERNAME` | Yes | Your Confluence account email | `jane.doe@company.com` |
-| `CONFLUENCE_API_TOKEN` | Yes | API token for authentication | `ATATT3xFfGF0...` |
-| `CONFLUENCE_SPACE_KEY` | Yes | Space key (visible in space URL) | `DEV` or `TT` |
-| `RULES_PAGE_TITLE` | Yes | Page title containing rules | `Rules` |
-| `INSIGHTS_PARENT_PAGE_TITLE` | Yes | Parent page for saved insights | `Memory Insights` |
+| `DATA_STORE` | No | Data store backend | `supabase` (default) or `confluence` |
+| `SUPABASE_URL` | When `supabase` | Supabase project URL | `https://abc123.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | When `supabase` | Service role key (not anon key) | `eyJhbGci...` |
+| `TRANSPORT_MODE` | No | Transport protocol | `stdio` (default) or `http` |
+| `HTTP_PORT` | No | Port for HTTP server | `3000` (default) |
+| `API_AUTH_TOKEN` | When `http` | Bearer token for HTTP authentication | `openssl rand -base64 32` |
 | `LOG_LEVEL` | No | Logging verbosity | `info` (default), `debug`, `warn`, `error` |
+
+**Conditional validation:**
+- When `DATA_STORE=supabase`, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are required
+- When `DATA_STORE=confluence`, Confluence variables are required
+- When `TRANSPORT_MODE=http`, `API_AUTH_TOKEN` is required
 
 **Security Note:** Never commit your `.env` file to version control. It's already included in `.gitignore`.
 
@@ -527,6 +590,149 @@ Add the following configuration to the `mcpServers` object:
 ##### Step 5: Save and Close
 
 Save the file and close your editor.
+
+---
+
+## Remote Server (HTTP Mode)
+
+CodifierMcp can run as a remote HTTP server, allowing MCP clients to connect over the network instead of requiring a local stdio process.
+
+### Quick Start (Remote Server)
+
+```bash
+# 1. Generate a secure auth token
+export API_AUTH_TOKEN=$(openssl rand -base64 32)
+echo "Your token: $API_AUTH_TOKEN"
+
+# 2. Start the server in HTTP mode
+TRANSPORT_MODE=http \
+HTTP_PORT=3000 \
+API_AUTH_TOKEN=$API_AUTH_TOKEN \
+CONFLUENCE_BASE_URL=https://yoursite.atlassian.net \
+CONFLUENCE_USERNAME=your-email@example.com \
+CONFLUENCE_API_TOKEN=your-confluence-token \
+CONFLUENCE_SPACE_KEY=TT \
+node dist/index.js
+```
+
+Or configure these in your `.env` file:
+
+```bash
+TRANSPORT_MODE=http
+HTTP_PORT=3000
+API_AUTH_TOKEN=your-secure-random-token
+
+# ... plus your existing Confluence variables
+```
+
+Then run:
+
+```bash
+npm run build && node dist/index.js
+```
+
+**Expected output (stderr):**
+```
+[INFO] Starting CodifierMcp server
+[INFO] Configuration loaded
+[INFO] Starting server in HTTP mode
+[INFO] HTTP server started { port: 3000, endpoints: { modern: '/mcp', legacy_sse: '/sse', legacy_messages: '/messages', health: '/health' } }
+[INFO] CodifierMcp server is ready (HTTP transport)
+```
+
+### Authentication
+
+All endpoints except `/health` require a Bearer token in the `Authorization` header:
+
+```bash
+Authorization: Bearer <your-API_AUTH_TOKEN-value>
+```
+
+Requests without a valid token receive a `401` response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": { "code": -32000, "message": "Unauthorized: Invalid API token" },
+  "id": null
+}
+```
+
+### Endpoints
+
+| Endpoint | Methods | Auth | Description |
+|----------|---------|------|-------------|
+| `/health` | GET | No | Health check — returns `{"status":"ok"}` |
+| `/mcp` | POST, GET, DELETE | Yes | **StreamableHTTP** transport (MCP protocol 2025-03-26) |
+| `/sse` | GET | Yes | **SSE** transport for legacy clients (protocol 2024-11-05) |
+| `/messages` | POST | Yes | SSE message endpoint (used with `/sse`) |
+
+**Test the health endpoint:**
+
+```bash
+curl http://localhost:3000/health
+# {"status":"ok"}
+```
+
+**Test authentication:**
+
+```bash
+# Should return 401
+curl -s http://localhost:3000/mcp | jq
+
+# Should succeed (with valid MCP request body)
+curl -X POST http://localhost:3000/mcp \
+  -H "Authorization: Bearer $API_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+```
+
+### Connecting MCP Clients to Remote Server
+
+#### Claude Desktop (StreamableHTTP)
+
+For Claude Desktop or other clients that support remote MCP servers via StreamableHTTP, configure the server URL and auth header:
+
+```json
+{
+  "mcpServers": {
+    "codifier": {
+      "type": "streamablehttp",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer your-api-auth-token"
+      }
+    }
+  }
+}
+```
+
+For a remote deployment, replace `localhost:3000` with your server's hostname.
+
+#### Claude Code (CLI)
+
+```bash
+claude mcp add codifier-remote \
+  --transport http \
+  --url http://localhost:3000/mcp \
+  --header "Authorization: Bearer your-api-auth-token"
+```
+
+### SSE Legacy Transport
+
+For older MCP clients that only support the SSE transport (protocol version 2024-11-05):
+
+1. Client establishes an SSE connection to `GET /sse`
+2. Server returns an SSE stream with a session endpoint URL
+3. Client sends JSON-RPC requests to `POST /messages?sessionId=<id>`
+
+```bash
+# Establish SSE connection
+curl -N -H "Authorization: Bearer $API_AUTH_TOKEN" \
+  http://localhost:3000/sse
+```
+
+The StreamableHTTP transport at `/mcp` is preferred for all new integrations.
 
 ---
 
@@ -1545,14 +1751,28 @@ If you encounter issues not covered here:
 ```
 codifierMcp/
 ├── src/                          # TypeScript source files
-│   ├── index.ts                  # MCP server entry point
+│   ├── index.ts                  # Entry point (transport branching)
 │   ├── config/
-│   │   └── index.ts              # Configuration management (Zod validation)
+│   │   └── env.ts                # Configuration management (Zod validation)
+│   ├── http/                     # HTTP transport module
+│   │   ├── server.ts             # Express server (StreamableHTTP + SSE)
+│   │   └── auth-middleware.ts    # Bearer token authentication
 │   ├── datastore/
 │   │   ├── interface.ts          # IDataStore abstraction
-│   │   ├── confluence-client.ts  # HTTP client for Confluence REST API
+│   │   ├── factory.ts            # Factory: createDataStore(config)
+│   │   ├── supabase-datastore.ts # IDataStore implementation for Supabase
+│   │   ├── supabase-client.ts    # Supabase client wrapper
+│   │   ├── supabase-types.ts     # Supabase type definitions
 │   │   ├── atlassian-datastore.ts # IDataStore implementation for Confluence
+│   │   ├── confluence-client.ts  # HTTP client for Confluence REST API
+│   │   ├── confluence-types.ts   # Confluence type definitions
 │   │   └── content-parser.ts     # YAML parsing and content extraction
+│   ├── mcp/
+│   │   ├── server.ts             # MCP server (transport-agnostic)
+│   │   ├── schemas.ts            # Zod schemas for tool parameters
+│   │   └── tools/                # Tool implementations
+│   │       ├── fetch-context.ts
+│   │       └── update-memory.ts
 │   ├── services/
 │   │   ├── context-service.ts    # Rule retrieval with relevance scoring
 │   │   └── memory-service.ts     # Insight storage with metadata enrichment
@@ -1563,6 +1783,14 @@ codifierMcp/
 ├── docs/
 │   ├── rules.yaml                # Project development rules
 │   └── evals.yaml                # Rule evaluations
+├── supabase/
+│   └── migrations/
+│       └── 001_initial_schema.sql # Database schema
+├── scripts/
+│   └── migrate-confluence-to-supabase.ts # Migration tool
+├── Dockerfile                    # Docker image for deployment
+├── fly.toml                      # Fly.io deployment config
+├── .dockerignore                 # Docker build exclusions
 ├── .env.example                  # Example environment configuration
 ├── .env                          # Your local configuration (not committed)
 ├── tsconfig.json                 # TypeScript compiler configuration
@@ -1572,12 +1800,18 @@ codifierMcp/
 
 ### Key Files
 
-- **src/index.ts**: MCP server setup, tool registration, request handling
-- **src/config/index.ts**: Environment validation with Zod schemas
-- **src/datastore/interface.ts**: Abstraction layer for storage backends
-- **src/datastore/atlassian-datastore.ts**: Confluence integration
+- **src/index.ts**: Entry point with transport mode branching (stdio vs HTTP)
+- **src/config/env.ts**: Environment validation with Zod schemas (conditional validation)
+- **src/http/server.ts**: Express server with StreamableHTTP and SSE transports
+- **src/http/auth-middleware.ts**: Bearer token authentication middleware
+- **src/mcp/server.ts**: Transport-agnostic MCP server creation
+- **src/datastore/interface.ts**: IDataStore abstraction for storage backends
+- **src/datastore/factory.ts**: Factory pattern to switch between data stores
+- **src/datastore/supabase-datastore.ts**: Supabase integration (default)
+- **src/datastore/atlassian-datastore.ts**: Confluence integration (optional)
 - **src/services/context-service.ts**: Advanced rule retrieval logic
 - **src/services/memory-service.ts**: Insight enrichment and storage
+- **supabase/migrations/001_initial_schema.sql**: Database schema
 - **docs/rules.yaml**: Development best practices for this project
 
 ### Development Commands
@@ -1589,8 +1823,11 @@ npm install
 # Build TypeScript to JavaScript
 npm run build
 
-# Build and run (for testing)
+# Build and run in stdio mode (default, for local testing)
 npm run dev
+
+# Build and run in HTTP mode
+TRANSPORT_MODE=http API_AUTH_TOKEN=dev-token npm run dev
 
 # Watch mode (rebuilds on file changes)
 npm run watch
@@ -1655,10 +1892,18 @@ Follow the patterns defined in `docs/rules.yaml`:
 
 ## Architecture Details
 
-### Three-Layer Architecture
+### Four-Layer Architecture
 
 ```
 ┌─────────────────────────────────────────┐
+│   Transport Layer                       │
+│   - stdio (StdioServerTransport)        │
+│   - HTTP (StreamableHTTPServerTransport)│
+│   - SSE fallback (SSEServerTransport)   │
+│   - Bearer token auth (HTTP only)       │
+└──────────────┬──────────────────────────┘
+               │
+┌──────────────▼──────────────────────────┐
 │   MCP Protocol Layer                    │
 │   - Tool registration                   │
 │   - Request validation                  │
@@ -1677,53 +1922,66 @@ Follow the patterns defined in `docs/rules.yaml`:
 ┌──────────────▼──────────────────────────┐
 │   Data Access Layer                     │
 │   - IDataStore interface                │
-│   - AtlassianDataStore implementation   │
-│   - ConfluenceClient (HTTP)             │
-│   - Content parsing (YAML)              │
+│   - Factory: createDataStore(config)    │
+│   ├── SupabaseDataStore (default)       │
+│   │   - Supabase client                 │
+│   │   - PostgreSQL + pgvector           │
+│   └── AtlassianDataStore (optional)     │
+│       - ConfluenceClient (HTTP)         │
+│       - Content parsing (YAML)          │
 └──────────────┬──────────────────────────┘
                │
-┌──────────────▼──────────────────────────┐
-│   Confluence Cloud (Storage)            │
-│   - Rules page (YAML)                   │
-│   - Memory Insights (child pages)       │
-└─────────────────────────────────────────┘
+       ┌───────┴────────┐
+       ↓                ↓
+┌──────────────┐  ┌─────────────────┐
+│ Supabase     │  │ Confluence Cloud│
+│ (Default)    │  │ (Optional)      │
+└──────────────┘  └─────────────────┘
 ```
 
 ### IDataStore Abstraction
 
-The `IDataStore` interface enables easy migration between storage backends:
+The `IDataStore` interface enables switching between storage backends:
 
 ```typescript
 interface IDataStore {
+  // Get store identifier (cloudId or project name)
+  getStoreId(): Promise<string>;
+
+  // Initialize the data store
+  initialize(): Promise<void>;
+
+  // Health check
+  healthCheck(): Promise<boolean>;
+
   // Fetch all rules from storage
   fetchRules(): Promise<Rule[]>;
 
-  // Save an insight to storage
-  saveInsight(insight: Insight): Promise<void>;
-
-  // Optional: health check
-  healthCheck?(): Promise<boolean>;
+  // Save insights to storage
+  saveInsights(insights: Insight[]): Promise<SavedInsight[]>;
 }
 ```
 
-**Current Implementation:** `AtlassianDataStore`
+**Current Implementation:** `SupabaseDataStore` (default)
+- PostgreSQL database with pgvector extension
+- Three tables: `projects`, `memories`, `insights`
+- Structured storage with foreign keys
+- Vector embeddings for semantic search
+
+**Legacy Implementation:** `AtlassianDataStore` (optional)
 - Uses Confluence REST API
 - Parses YAML from Confluence pages
 - Creates child pages for insights
 
-**Future Implementation:** `SupabaseDataStore`
-- PostgreSQL database with pgvector
-- Vector embeddings for semantic search
-- Knowledge graph with relationships
-
 ### MCP Protocol Flow
 
-1. **Client Request**: MCP client (Claude) sends tool request via stdio
-2. **Validation**: Server validates request against Zod schema
-3. **Service Layer**: Appropriate service handles business logic
-4. **Data Layer**: Service calls IDataStore methods
-5. **External API**: DataStore communicates with Confluence
-6. **Response**: Results flow back through layers to client
+1. **Client Request**: MCP client sends tool request via stdio (local) or HTTP (remote)
+2. **Auth** (HTTP only): Bearer token validated by auth middleware
+3. **Validation**: Server validates request against Zod schema
+4. **Service Layer**: Appropriate service handles business logic
+5. **Data Layer**: Service calls IDataStore methods
+6. **External API**: DataStore communicates with Confluence
+7. **Response**: Results flow back through layers to client
 
 ### Relevance Scoring
 
@@ -1749,28 +2007,36 @@ interface IDataStore {
 
 ## Future Enhancements
 
-### Phase 2: Supabase Migration
+### Phase 2: Playbook Engine
 
-- **PostgreSQL database** with structured tables
-- **Vector storage** (pgvector) for embeddings
-- **Semantic search** using similarity queries
-- **Migration tooling** from Confluence to Supabase
+- **Sequential task execution** from structured playbooks
+- **Conditional logic** and branching workflows
+- **State management** across playbook steps
+- **Error recovery** and retry mechanisms
 
-### Phase 3: Advanced Features
+### Phase 3: Skill Orchestration
+
+- **Multi-skill coordination** for complex workflows
+- **Dependency resolution** between skills
+- **Parallel execution** where possible
+- **Skill composition** and reusability
+
+### Phase 4: Teams Bot Integration
+
+- **Microsoft Teams bot** interface
+- **Real-time collaboration** features
+- **Team-wide knowledge sharing**
+- **Administrative controls** and permissions
+
+### Advanced Features (Beyond Phase 4)
 
 - **Knowledge graph** with relationship mapping
 - **RAG architecture** for context-aware retrieval
 - **Pattern extraction** from code and conversations
 - **Learning algorithms** to refine rules over time
 - **Confidence scoring** based on usage and outcomes
-
-### Phase 4: Integration & UX
-
 - **IDE plugins** (VS Code, IntelliJ)
 - **CI/CD hooks** for automated knowledge capture
-- **Code review augmentation** with rule checking
-- **Query interface** for exploring knowledge graph
-- **Administrative dashboard** for rule management
 
 ### Potential Enhancements
 
@@ -1879,19 +2145,43 @@ CodifierMcp is developed with assistance from Claude, demonstrating the power of
 
 ## Quick Start Checklist
 
+### Remote Install (Fastest Path)
+
+- [ ] Supabase account created
+- [ ] Supabase project created
+- [ ] Project URL and Service Role Key obtained
+- [ ] API auth token obtained from deployment admin
+- [ ] One-liner install: `claude mcp add --transport http codifier https://codifier-mcp.fly.dev/mcp --header "Authorization: Bearer <token>"`
+- [ ] Connection verified in MCP client
+- [ ] fetch_context tested
+- [ ] update_memory tested
+
+### Local (stdio) Mode
+
 - [ ] Node.js 18+ installed
-- [ ] Confluence Cloud account created
-- [ ] Confluence space with Rules page (YAML format)
-- [ ] API token generated
+- [ ] Supabase project created (or Confluence if using legacy mode)
 - [ ] Repository cloned
 - [ ] Dependencies installed (`npm install`)
 - [ ] Project built (`npm run build`)
 - [ ] .env file created and configured
-- [ ] Confluence connection tested
+- [ ] `DATA_STORE=supabase` set (or `confluence` for legacy)
+- [ ] Supabase credentials added to .env
+- [ ] Connection tested
 - [ ] Claude Desktop configured
 - [ ] MCP server connected
 - [ ] fetch_context tested
 - [ ] update_memory tested
-- [ ] Insights verified in Confluence
+
+### Remote (HTTP) Self-Hosted
+
+- [ ] All local prerequisites above completed
+- [ ] `API_AUTH_TOKEN` generated (`openssl rand -base64 32`)
+- [ ] `TRANSPORT_MODE=http` set in .env
+- [ ] Server starts without errors
+- [ ] `curl http://localhost:3000/health` returns `{"status":"ok"}`
+- [ ] Authenticated requests to `/mcp` succeed
+- [ ] Unauthenticated requests return 401
+- [ ] MCP client connected via StreamableHTTP
+- [ ] (Optional) Deployed to Fly.io or other hosting
 
 **Congratulations!** You're now ready to use CodifierMcp to build institutional memory for your team.

@@ -7,8 +7,9 @@
 
 import { getConfig } from './config/env.js';
 import { logger } from './utils/logger.js';
-import { AtlassianDataStore } from './datastore/atlassian-datastore.js';
-import { initializeMcpServer } from './mcp/server.js';
+import { createDataStore } from './datastore/factory.js';
+import { initializeMcpServer, connectStdioTransport } from './mcp/server.js';
+import { startHttpServer } from './http/server.js';
 
 /**
  * Main entry point
@@ -20,33 +21,38 @@ async function main(): Promise<void> {
     // Load and validate configuration
     const config = getConfig();
     logger.info('Configuration loaded', {
-      baseUrl: config.CONFLUENCE_BASE_URL,
-      username: config.CONFLUENCE_USERNAME,
-      spaceKey: config.CONFLUENCE_SPACE_KEY,
-      rulesPage: config.RULES_PAGE_TITLE,
-      insightsParentPage: config.INSIGHTS_PARENT_PAGE_TITLE,
+      dataStore: config.DATA_STORE,
+      transportMode: config.TRANSPORT_MODE,
+      httpPort: config.TRANSPORT_MODE === 'http' ? config.HTTP_PORT : undefined,
       logLevel: config.LOG_LEVEL,
     });
 
-    // Create data store instance with Confluence authentication
-    const dataStore = new AtlassianDataStore({
-      baseUrl: config.CONFLUENCE_BASE_URL,
-      username: config.CONFLUENCE_USERNAME,
-      apiToken: config.CONFLUENCE_API_TOKEN,
-      spaceKey: config.CONFLUENCE_SPACE_KEY,
-      rulesPageTitle: config.RULES_PAGE_TITLE,
-      insightsParentPageTitle: config.INSIGHTS_PARENT_PAGE_TITLE,
-    });
-    logger.debug('Data store instance created');
+    // Create data store instance via factory
+    const dataStore = createDataStore(config);
+    logger.debug('Data store instance created', { backend: config.DATA_STORE });
 
-    // Initialize and start MCP server
+    // Initialize MCP server (transport-agnostic)
     const server = await initializeMcpServer({
       name: 'codifier-mcp',
       version: '0.1.0',
       dataStore,
     });
 
-    logger.info('CodifierMcp server is ready');
+    // Connect appropriate transport based on configuration
+    if (config.TRANSPORT_MODE === 'stdio') {
+      logger.info('Starting server in stdio mode');
+      await connectStdioTransport(server);
+      logger.info('CodifierMcp server is ready (stdio transport)');
+    } else if (config.TRANSPORT_MODE === 'http') {
+      logger.info('Starting server in HTTP mode');
+      await startHttpServer(server, {
+        port: config.HTTP_PORT,
+        apiAuthToken: config.API_AUTH_TOKEN!,
+        dataStore,
+      });
+      logger.info('CodifierMcp server is ready (HTTP transport)');
+    }
+
     logger.info('Tools available: fetch_context, update_memory');
 
     // Handle graceful shutdown

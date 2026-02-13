@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**CodifierMcp** is an MCP (Model Context Protocol) server implementation for MemoryBuilder, an institutional memory system for AI-driven development. The system captures and synthesizes organizational knowledge from software development projects, creating a self-reinforcing feedback loop that improves AI-driven development through accumulated institutional knowledge.
+**CodifierMcp** is a remotely-installable MCP (Model Context Protocol) server for MemoryBuilder, an institutional memory system for AI-driven development. The system captures and synthesizes organizational knowledge from software development projects, creating a self-reinforcing feedback loop that improves AI-driven development through accumulated institutional knowledge. Deployed at `codifier-mcp.fly.dev` with dual transport support (stdio for local use, HTTP for remote access).
 
 ## Build and Development Commands
 
@@ -49,48 +49,50 @@ Inspired by Supermemory.ai, the system uses:
 
 The feedback loop follows: Input → Build & Generate (with memory enrichment) → Evaluate & Learn (pattern extraction) → Memory Update (rule refinement and graph updates).
 
-## MVP Strategy
+## Data Store Strategy
 
-The project uses a phased migration approach to deliver value quickly while building toward the full vision:
+The project successfully migrated to Supabase while maintaining backward compatibility:
 
-**Current Approach (MVP)**: Start with Confluence as the data store via Atlassian MCP tools. This allows rapid prototyping and immediate value delivery without infrastructure setup.
+**Current (Default)**: Supabase database with PostgreSQL and pgvector extension. Provides structured storage, semantic search, and relationship mapping. Set via `DATA_STORE=supabase` (default).
 
-**Future Migration**: Transition to Supabase for advanced features like vector search, semantic retrieval, and graph relationships.
+**Legacy (Optional)**: Confluence Cloud via Atlassian MCP tools. Still supported for teams with existing Confluence infrastructure. Set via `DATA_STORE=confluence`.
 
-**Why This Approach**:
-- Leverage existing Confluence infrastructure
-- Clean abstraction layer (IDataStore interface) makes migration straightforward
-- Learn and validate concepts before committing to infrastructure
-- Deliver value to users immediately
+**Why This Works**:
+- Clean abstraction layer (IDataStore interface) enabled seamless migration
+- Factory pattern (`createDataStore()`) switches between implementations
+- Both data stores share the same interface (`getStoreId()`, `fetchRules()`, `saveInsights()`)
+- Teams can choose the storage backend that fits their needs
 
 ## Implementation Phases
 
-Development follows a phased approach with the MVP-first strategy:
+Development follows a phased approach:
 
-**Phase 1: MVP with Atlassian MCP** (Current)
+**Phase 1: Core Infrastructure** (COMPLETE)
 - Foundation: utilities, configuration, types, error handling
 - Data store abstraction layer with IDataStore interface
-- Confluence integration via Atlassian MCP tools
+- Dual transport: stdio (local) and HTTP (remote with Bearer auth)
+- Supabase database with PostgreSQL and pgvector
+- Confluence integration (legacy/optional)
 - Basic MCP server with fetch_context and update_memory operations
-- Rules and insights storage in Confluence pages
+- Deployed to Fly.io with suspend-on-idle
 
-**Phase 2: Supabase Migration**
-- Database schema design (rules, documents, API contracts)
-- Implement SupabaseDataStore with IDataStore interface
-- Data migration tools from Confluence to Supabase
-- Relationship management and audit trail
+**Phase 2: Playbook Engine** (Next)
+- Sequential task execution from structured playbooks
+- Conditional logic and branching workflows
+- State management across playbook steps
+- Error recovery and retry mechanisms
 
-**Phase 3: Advanced Features**
-- Vector storage and semantic search
-- Knowledge graph with relationship mapping
-- RAG architecture for context-aware retrieval
-- Pattern extraction and learning algorithms
+**Phase 3: Skill Orchestration**
+- Multi-skill coordination for complex workflows
+- Dependency resolution between skills
+- Parallel execution where possible
+- Skill composition and reusability
 
-**Phase 4: Integration & UX**
-- IDE plugins and CI/CD hooks
-- Code review augmentation
-- Query interface and knowledge graph explorer
-- Administrative dashboard
+**Phase 4: Teams Bot Integration**
+- Microsoft Teams bot interface
+- Real-time collaboration features
+- Team-wide knowledge sharing
+- Administrative controls and permissions
 
 ## MCP Protocol Implementation
 
@@ -101,36 +103,43 @@ When implementing MCP protocol handlers, the core operations are:
 
 ## MCP Architecture
 
-CodifierMcp acts as a bridge between MCP clients and Confluence:
+CodifierMcp supports dual transport modes and dual data stores:
 
 ```
 MCP Client (Claude Desktop, GitHub Copilot, etc.)
-    ↓ stdio transport
+    ↓ stdio (local) OR HTTP (remote with Bearer auth)
 CodifierMcp Server (this project - business logic)
-    ↓ calls MCP tools via SDK
-Atlassian MCP Server (Confluence API wrapper)
-    ↓ REST API
-Confluence Cloud (data storage)
+    ↓ factory pattern: createDataStore(config)
+    ├── SupabaseDataStore (default)
+    │   ↓ @supabase/supabase-js
+    │   └── Supabase (PostgreSQL + pgvector)
+    │
+    └── AtlassianDataStore (optional)
+        ↓ REST API
+        └── Confluence Cloud (legacy)
 ```
 
 **Key Design Principles**:
 - CodifierMcp implements the IDataStore abstraction layer
-- Atlassian MCP tools handle Confluence API authentication and communication
-- Clean separation allows easy migration to different storage backends
+- Factory pattern switches between SupabaseDataStore and AtlassianDataStore
+- Dual transport: stdio for local MCP clients, HTTP for remote access
+- Bearer token authentication for HTTP mode
+- Clean separation allows future storage backends
 
 ## Data Storage Strategy
 
-**Current (MVP)**: Confluence pages store institutional memory
+**Current (Default)**: Supabase database with PostgreSQL
+- Three core tables: `projects`, `memories`, `insights`
+- pgvector extension for embeddings and semantic search
+- Structured storage for rules, documents, and API contracts
+- Audit trails with `created_at` and `updated_at` timestamps
+- Relationship management via foreign keys
+
+**Legacy (Optional)**: Confluence pages
 - Rules stored in YAML code blocks within Confluence pages
 - Insights stored as dated child pages under a parent "Memory Insights" page
 - Uses Atlassian MCP tools for all Confluence operations
-
-**Future (Production)**: Supabase database with advanced features
-- Core tables for rules, documents, and API contracts
-- Relationship management for graph connections between memories
-- Vector storage for embeddings to enable semantic search
-- Audit trail for change history and evaluation results
-- Migration path: Export from Confluence → Transform → Import to Supabase
+- Migration tools available: `scripts/migrate-confluence-to-supabase.ts`
 
 ## Key Success Metrics
 
@@ -146,8 +155,10 @@ The system aims for:
 - **Target**: ES2022 with ESNext module system
 - **Zod** for runtime validation of configuration and data schemas
 - **MCP SDK** (@modelcontextprotocol/sdk) for protocol implementation
-- **Atlassian MCP** for Confluence integration (current)
-- **Supabase** for database and vector storage (future migration)
+- **Express** for HTTP transport with CORS support
+- **Supabase** (@supabase/supabase-js) for database and vector storage (default)
+- **Atlassian MCP** for Confluence integration (optional)
+- **Fly.io** for deployment with suspend-on-idle
 
 ## Development Rules and Best Practices
 
