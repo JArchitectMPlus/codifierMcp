@@ -1,50 +1,43 @@
 /**
- * Supabase Data Store implementation
- * Stores institutional memory in Supabase Postgres
+ * Supabase Data Store implementation (v2.0)
+ * Stores institutional memory in Supabase Postgres.
  */
 
-import { IDataStore } from './interface.js';
-import {
+import type { IDataStore, MemoryType, SessionStatus } from './interface.js';
+import type {
+  ProjectRow,
+  MemoryRow,
+  RepositoryRow,
+  SessionRow,
+} from './supabase-types.js';
+import { CodifierSupabaseClient } from './supabase-client.js';
+import { SupabaseError, DataStoreError } from '../utils/errors.js';
+import { logger } from '../utils/logger.js';
+
+// Legacy types retained for backward-compatible wrapper methods
+import type {
   FetchRulesParams,
   FetchRulesResult,
   Rule,
   SaveInsightsParams,
   SaveInsightsResult,
 } from './types.js';
-import { CodifierSupabaseClient } from './supabase-client.js';
-import type { MemoryRow } from './supabase-types.js';
-import { SupabaseError, DataStoreError } from '../utils/errors.js';
-import { logger } from '../utils/logger.js';
 
-/**
- * Configuration for SupabaseDataStore
- */
 export interface SupabaseDataStoreConfig {
   url: string;
   serviceRoleKey: string;
   projectId?: string;
-  autoCreateProject?: boolean;
-  projectName?: string;
 }
 
-/**
- * IDataStore implementation backed by Supabase
- */
 export class SupabaseDataStore implements IDataStore {
   private supabaseClient: CodifierSupabaseClient;
   private initialized = false;
-  private projectId: string | undefined;
-  private readonly autoCreateProject: boolean;
-  private readonly projectName: string;
 
   constructor(config: SupabaseDataStoreConfig) {
     this.supabaseClient = new CodifierSupabaseClient({
       url: config.url,
       serviceRoleKey: config.serviceRoleKey,
     });
-    this.projectId = config.projectId;
-    this.autoCreateProject = config.autoCreateProject ?? true;
-    this.projectName = config.projectName ?? 'default';
   }
 
   async getStoreId(): Promise<string> {
@@ -65,27 +58,8 @@ export class SupabaseDataStore implements IDataStore {
         throw new DataStoreError('Supabase health check failed — unable to connect');
       }
 
-      // Resolve or create project
-      if (this.projectId) {
-        const client = this.supabaseClient.getClient();
-        const { data, error } = await client
-          .from('projects')
-          .select('id')
-          .eq('id', this.projectId)
-          .single();
-        if (error || !data) {
-          throw new SupabaseError(`Project not found: ${this.projectId}`);
-        }
-      } else if (this.autoCreateProject) {
-        this.projectId = await this.ensureProjectExists();
-      } else {
-        throw new DataStoreError('No project ID provided and autoCreateProject is disabled');
-      }
-
       this.initialized = true;
-      logger.info('SupabaseDataStore initialized successfully', {
-        projectId: this.projectId,
-      });
+      logger.info('SupabaseDataStore initialized successfully');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to initialize SupabaseDataStore', message);
@@ -100,153 +74,472 @@ export class SupabaseDataStore implements IDataStore {
     return this.supabaseClient.healthCheck();
   }
 
-  async fetchRules(params: FetchRulesParams): Promise<FetchRulesResult> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
+  // ---------------------------------------------------------------------------
+  // Projects
+  // ---------------------------------------------------------------------------
+
+  async createProject(params: {
+    name: string;
+    org?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ProjectRow> {
+    await this.ensureInitialized();
 
     try {
-      logger.info('Fetching rules from Supabase', params);
+      logger.info('Creating project', { name: params.name, org: params.org });
+
+      const client = this.supabaseClient.getClient();
+      const { data, error } = await client
+        .from('projects')
+        .insert({
+          name: params.name,
+          org: params.org ?? null,
+          metadata: params.metadata ?? {},
+        })
+        .select('*')
+        .single();
+
+      if (error || !data) {
+        throw new SupabaseError(
+          `Failed to create project: ${error?.message ?? 'No data returned'}`
+        );
+      }
+
+      logger.info('Project created', { projectId: data.id });
+      return data as ProjectRow;
+    } catch (error) {
+      if (error instanceof SupabaseError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new SupabaseError(`Failed to create project: ${message}`, error instanceof Error ? error : undefined);
+    }
+  }
+
+  async listProjects(): Promise<ProjectRow[]> {
+    await this.ensureInitialized();
+
+    try {
+      logger.info('Listing projects');
+
+      const client = this.supabaseClient.getClient();
+      const { data, error } = await client
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw new SupabaseError(`Failed to list projects: ${error.message}`);
+      }
+
+      return (data ?? []) as ProjectRow[];
+    } catch (error) {
+      if (error instanceof SupabaseError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new SupabaseError(`Failed to list projects: ${message}`, error instanceof Error ? error : undefined);
+    }
+  }
+
+  async getProject(id: string): Promise<ProjectRow | null> {
+    await this.ensureInitialized();
+
+    try {
+      logger.debug('Getting project', { id });
+
+      const client = this.supabaseClient.getClient();
+      const { data, error } = await client
+        .from('projects')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // not found
+        throw new SupabaseError(`Failed to get project: ${error.message}`);
+      }
+
+      return data as ProjectRow | null;
+    } catch (error) {
+      if (error instanceof SupabaseError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new SupabaseError(`Failed to get project: ${message}`, error instanceof Error ? error : undefined);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Memories
+  // ---------------------------------------------------------------------------
+
+  async fetchMemories(params: {
+    project_id: string;
+    memory_type?: MemoryType;
+    tags?: string[];
+    query?: string;
+    limit?: number;
+  }): Promise<MemoryRow[]> {
+    await this.ensureInitialized();
+
+    try {
+      logger.info('Fetching memories', {
+        project_id: params.project_id,
+        memory_type: params.memory_type,
+        tags: params.tags,
+        query: params.query,
+        limit: params.limit,
+      });
 
       const client = this.supabaseClient.getClient();
       let query = client
         .from('memories')
         .select('*')
-        .eq('project_id', this.projectId!)
-        .eq('memory_type', 'rule');
+        .eq('project_id', params.project_id);
 
-      if (params.category) {
-        query = query.ilike('category', params.category);
+      if (params.memory_type) {
+        query = query.eq('memory_type', params.memory_type);
+      }
+
+      if (params.tags && params.tags.length > 0) {
+        // @> checks that the row's tags array contains all supplied tags
+        query = query.contains('tags', params.tags);
       }
 
       if (params.query) {
+        const escaped = params.query.replace(/[%_]/g, '\\$&');
         query = query.or(
-          `title.ilike.%${params.query}%,description.ilike.%${params.query}%`
+          `title.ilike.%${escaped}%,content::text.ilike.%${escaped}%`
         );
       }
 
-      const { data, error } = await query;
+      if (params.limit && params.limit > 0) {
+        query = query.limit(params.limit);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
-        throw new SupabaseError(`Failed to fetch rules: ${error.message}`);
+        throw new SupabaseError(`Failed to fetch memories: ${error.message}`);
       }
 
-      const rows = (data ?? []) as MemoryRow[];
-      let rules = rows.map(mapMemoryRowToRule);
-
-      const totalCount = rules.length;
-
-      if (params.limit && params.limit > 0) {
-        rules = rules.slice(0, params.limit);
-      }
-
-      logger.info(`Fetched ${rules.length} rules (total: ${totalCount})`, params);
-
-      return {
-        rules,
-        totalCount,
-        source: `Supabase: project ${this.projectId}`,
-      };
+      logger.info(`Fetched ${(data ?? []).length} memories`);
+      return (data ?? []) as MemoryRow[];
     } catch (error) {
       if (error instanceof SupabaseError) throw error;
       const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to fetch rules', message);
-      throw new SupabaseError(
-        `Failed to fetch rules: ${message}`,
-        error instanceof Error ? error : undefined
-      );
+      throw new SupabaseError(`Failed to fetch memories: ${message}`, error instanceof Error ? error : undefined);
     }
   }
 
-  async saveInsights(params: SaveInsightsParams): Promise<SaveInsightsResult> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
+  async upsertMemory(params: {
+    project_id: string;
+    memory_type: MemoryType;
+    title: string;
+    content: Record<string, unknown>;
+    id?: string;
+    tags?: string[];
+    category?: string;
+    description?: string;
+    confidence?: number;
+    source_role?: string;
+  }): Promise<MemoryRow> {
+    await this.ensureInitialized();
 
     try {
-      logger.info('Saving insights to Supabase', {
-        insightCount: params.insights.length,
-        context: params.context,
+      logger.info('Upserting memory', {
+        project_id: params.project_id,
+        memory_type: params.memory_type,
+        title: params.title,
+        id: params.id,
       });
 
       const client = this.supabaseClient.getClient();
-      const title = `Insight — ${new Date().toISOString().slice(0, 16)}`;
 
+      if (params.id) {
+        // Update existing record
+        const { data, error } = await client
+          .from('memories')
+          .update({
+            memory_type: params.memory_type,
+            title: params.title,
+            content: params.content,
+            tags: params.tags ?? [],
+            category: params.category ?? null,
+            description: params.description ?? null,
+            confidence: params.confidence ?? 1.0,
+            source_role: params.source_role ?? null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', params.id)
+          .eq('project_id', params.project_id)
+          .select('*')
+          .single();
+
+        if (error || !data) {
+          throw new SupabaseError(
+            `Failed to update memory: ${error?.message ?? 'No data returned'}`
+          );
+        }
+
+        logger.info('Memory updated', { id: data.id });
+        return data as MemoryRow;
+      }
+
+      // Insert new record
       const { data, error } = await client
-        .from('insights')
+        .from('memories')
         .insert({
-          project_id: this.projectId!,
-          context: params.context,
-          insights: params.insights,
-          source: params.metadata?.author ?? null,
-          tags: params.metadata?.relatedRules ?? [],
-          metadata: params.metadata ?? {},
+          project_id: params.project_id,
+          memory_type: params.memory_type,
+          title: params.title,
+          content: params.content,
+          tags: params.tags ?? [],
+          category: params.category ?? null,
+          description: params.description ?? null,
+          confidence: params.confidence ?? 1.0,
+          source_role: params.source_role ?? null,
         })
-        .select('id')
+        .select('*')
         .single();
 
       if (error || !data) {
-        throw new SupabaseError(`Failed to save insights: ${error?.message ?? 'No data returned'}`);
+        throw new SupabaseError(
+          `Failed to insert memory: ${error?.message ?? 'No data returned'}`
+        );
       }
 
-      logger.info('Successfully saved insights to Supabase', {
-        recordId: data.id,
-        title,
-      });
-
-      return {
-        success: true,
-        recordId: data.id,
-        recordTitle: title,
-        insightCount: params.insights.length,
-      };
+      logger.info('Memory inserted', { id: data.id });
+      return data as MemoryRow;
     } catch (error) {
       if (error instanceof SupabaseError) throw error;
       const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to save insights', message);
-      throw new SupabaseError(
-        `Failed to save insights: ${message}`,
-        error instanceof Error ? error : undefined
-      );
+      throw new SupabaseError(`Failed to upsert memory: ${message}`, error instanceof Error ? error : undefined);
     }
   }
 
-  /** Ensure a default project exists, creating one if needed */
-  private async ensureProjectExists(): Promise<string> {
-    const client = this.supabaseClient.getClient();
+  // ---------------------------------------------------------------------------
+  // Repositories
+  // ---------------------------------------------------------------------------
 
-    // Check for existing project by name
-    const { data: existing } = await client
-      .from('projects')
-      .select('id')
-      .eq('name', this.projectName)
-      .limit(1)
-      .single();
+  async saveRepository(params: {
+    project_id: string;
+    url: string;
+    snapshot: string;
+    file_tree?: Record<string, unknown>;
+    version_label?: string;
+    token_count?: number;
+  }): Promise<RepositoryRow> {
+    await this.ensureInitialized();
 
-    if (existing) {
-      logger.debug('Found existing project', { projectId: existing.id });
-      return existing.id;
+    try {
+      logger.info('Saving repository snapshot', {
+        project_id: params.project_id,
+        url: params.url,
+        version_label: params.version_label,
+      });
+
+      const client = this.supabaseClient.getClient();
+      const { data, error } = await client
+        .from('repositories')
+        .insert({
+          project_id: params.project_id,
+          url: params.url,
+          snapshot: params.snapshot,
+          file_tree: params.file_tree ?? {},
+          version_label: params.version_label ?? null,
+          token_count: params.token_count ?? null,
+        })
+        .select('*')
+        .single();
+
+      if (error || !data) {
+        throw new SupabaseError(
+          `Failed to save repository: ${error?.message ?? 'No data returned'}`
+        );
+      }
+
+      logger.info('Repository snapshot saved', { id: data.id });
+      return data as RepositoryRow;
+    } catch (error) {
+      if (error instanceof SupabaseError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new SupabaseError(`Failed to save repository: ${message}`, error instanceof Error ? error : undefined);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sessions
+  // ---------------------------------------------------------------------------
+
+  async createSession(params: {
+    project_id: string;
+    playbook_id: string;
+  }): Promise<SessionRow> {
+    await this.ensureInitialized();
+
+    try {
+      logger.info('Creating session', {
+        project_id: params.project_id,
+        playbook_id: params.playbook_id,
+      });
+
+      const client = this.supabaseClient.getClient();
+      const { data, error } = await client
+        .from('sessions')
+        .insert({
+          project_id: params.project_id,
+          playbook_id: params.playbook_id,
+          current_step: 0,
+          collected_data: {},
+          status: 'active',
+        })
+        .select('*')
+        .single();
+
+      if (error || !data) {
+        throw new SupabaseError(
+          `Failed to create session: ${error?.message ?? 'No data returned'}`
+        );
+      }
+
+      logger.info('Session created', { id: data.id });
+      return data as SessionRow;
+    } catch (error) {
+      if (error instanceof SupabaseError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new SupabaseError(`Failed to create session: ${message}`, error instanceof Error ? error : undefined);
+    }
+  }
+
+  async getSession(id: string): Promise<SessionRow | null> {
+    await this.ensureInitialized();
+
+    try {
+      logger.debug('Getting session', { id });
+
+      const client = this.supabaseClient.getClient();
+      const { data, error } = await client
+        .from('sessions')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null;
+        throw new SupabaseError(`Failed to get session: ${error.message}`);
+      }
+
+      return data as SessionRow | null;
+    } catch (error) {
+      if (error instanceof SupabaseError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new SupabaseError(`Failed to get session: ${message}`, error instanceof Error ? error : undefined);
+    }
+  }
+
+  async updateSession(
+    id: string,
+    updates: {
+      current_step?: number;
+      collected_data?: Record<string, unknown>;
+      status?: SessionStatus;
+    }
+  ): Promise<SessionRow> {
+    await this.ensureInitialized();
+
+    try {
+      logger.info('Updating session', { id, updates });
+
+      const client = this.supabaseClient.getClient();
+      const { data, error } = await client
+        .from('sessions')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (error || !data) {
+        throw new SupabaseError(
+          `Failed to update session: ${error?.message ?? 'No data returned'}`
+        );
+      }
+
+      logger.info('Session updated', { id: data.id, status: data.status });
+      return data as SessionRow;
+    } catch (error) {
+      if (error instanceof SupabaseError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new SupabaseError(`Failed to update session: ${message}`, error instanceof Error ? error : undefined);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Backward-compatible wrappers (used by context-service.ts / memory-service.ts)
+  // NOT on the IDataStore interface.
+  // ---------------------------------------------------------------------------
+
+  async fetchRules(params: FetchRulesParams): Promise<FetchRulesResult> {
+    // Derive a project_id from the first available project when not scoped
+    const projects = await this.listProjects();
+    const project_id = projects[0]?.id ?? '';
+
+    const rows = await this.fetchMemories({
+      project_id,
+      memory_type: 'rule',
+      query: params.query,
+      limit: params.limit,
+    });
+
+    let rules = rows.map(mapMemoryRowToRule);
+
+    if (params.category) {
+      const cat = params.category.toLowerCase();
+      rules = rules.filter((r) => r.category.toLowerCase().includes(cat));
     }
 
-    // Create new project
-    const { data: created, error } = await client
-      .from('projects')
-      .insert({ name: this.projectName })
-      .select('id')
-      .single();
+    return {
+      rules,
+      totalCount: rules.length,
+      source: `Supabase: project ${project_id}`,
+    };
+  }
 
-    if (error || !created) {
-      throw new SupabaseError(
-        `Failed to create project: ${error?.message ?? 'No data returned'}`
-      );
+  async saveInsights(params: SaveInsightsParams): Promise<SaveInsightsResult> {
+    const projects = await this.listProjects();
+    const project_id = projects[0]?.id ?? '';
+
+    const row = await this.upsertMemory({
+      project_id,
+      memory_type: 'learning',
+      title: `Insight — ${new Date().toISOString().slice(0, 16)}`,
+      content: {
+        context: params.context,
+        insights: params.insights,
+        metadata: params.metadata ?? {},
+      },
+      tags: (params.metadata?.relatedRules as string[]) ?? [],
+      source_role: (params.metadata?.author as string) ?? undefined,
+    });
+
+    return {
+      success: true,
+      recordId: row.id,
+      recordTitle: row.title,
+      insightCount: params.insights.length,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
     }
-
-    logger.info('Created new project', { projectId: created.id, name: this.projectName });
-    return created.id;
   }
 }
 
-/** Map a Supabase memories row to the Rule domain type */
+/** Map a memories row to the legacy Rule domain type */
 function mapMemoryRowToRule(row: MemoryRow): Rule {
   const content = row.content as Record<string, unknown>;
   return {
@@ -262,7 +555,7 @@ function mapMemoryRowToRule(row: MemoryRow): Rule {
       created: row.created_at,
       updated: row.updated_at,
       usageCount: row.usage_count,
-      tags: (content.tags as string[]) ?? [],
+      tags: row.tags ?? [],
       ...(content.metadata as Record<string, unknown> ?? {}),
     },
   };

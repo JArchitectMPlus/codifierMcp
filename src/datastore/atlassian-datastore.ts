@@ -1,9 +1,22 @@
 /**
- * Atlassian Data Store implementation
- * Connects directly to Confluence via REST API
+ * Atlassian Data Store implementation (legacy)
+ * Connects directly to Confluence via REST API.
+ *
+ * v2.0 note: The new IDataStore interface methods (fetchMemories, upsertMemory,
+ * createProject, etc.) are not supported by this backend. They throw a
+ * DataStoreError directing callers to switch to DATA_STORE=supabase.
+ * The legacy fetchRules / saveInsights methods remain fully functional.
  */
 
 import { IDataStore } from './interface.js';
+import type {
+  MemoryType,
+  SessionStatus,
+  ProjectRow,
+  MemoryRow,
+  RepositoryRow,
+  SessionRow,
+} from './supabase-types.js';
 import {
   FetchRulesParams,
   FetchRulesResult,
@@ -276,6 +289,103 @@ export class AtlassianDataStore implements IDataStore {
         error instanceof Error ? error : undefined
       );
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // v2.0 IDataStore methods — not supported by the Confluence backend.
+  // These stubs satisfy the interface contract; all throw DataStoreError.
+  // ---------------------------------------------------------------------------
+
+  async createProject(_params: {
+    name: string;
+    org?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ProjectRow> {
+    throw new DataStoreError(
+      'createProject is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
+  async listProjects(): Promise<ProjectRow[]> {
+    throw new DataStoreError(
+      'listProjects is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
+  async getProject(_id: string): Promise<ProjectRow | null> {
+    throw new DataStoreError(
+      'getProject is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
+  async fetchMemories(_params: {
+    project_id: string;
+    memory_type?: MemoryType;
+    tags?: string[];
+    query?: string;
+    limit?: number;
+  }): Promise<MemoryRow[]> {
+    throw new DataStoreError(
+      'fetchMemories is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
+  async upsertMemory(_params: {
+    project_id: string;
+    memory_type: MemoryType;
+    title: string;
+    content: Record<string, unknown>;
+    id?: string;
+    tags?: string[];
+    category?: string;
+    description?: string;
+    confidence?: number;
+    source_role?: string;
+  }): Promise<MemoryRow> {
+    throw new DataStoreError(
+      'upsertMemory is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
+  async saveRepository(_params: {
+    project_id: string;
+    url: string;
+    snapshot: string;
+    file_tree?: Record<string, unknown>;
+    version_label?: string;
+    token_count?: number;
+  }): Promise<RepositoryRow> {
+    throw new DataStoreError(
+      'saveRepository is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
+  async createSession(_params: {
+    project_id: string;
+    playbook_id: string;
+  }): Promise<SessionRow> {
+    throw new DataStoreError(
+      'createSession is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
+  async getSession(_id: string): Promise<SessionRow | null> {
+    throw new DataStoreError(
+      'getSession is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
+  async updateSession(
+    _id: string,
+    _updates: {
+      current_step?: number;
+      collected_data?: Record<string, unknown>;
+      status?: SessionStatus;
+    }
+  ): Promise<SessionRow> {
+    throw new DataStoreError(
+      'updateSession is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
   }
 
   /**

@@ -1,0 +1,35 @@
+id: brownfield-onboard
+name: Brownfield Onboarding
+role: developer
+description: Onboard an existing codebase by packing repos, storing snapshots, and generating architectural summary.
+steps:
+  - id: collect-repos
+    title: Repository URLs
+    prompt: "Provide the repository URL(s) to onboard (one per line)."
+    action: skill-invoke
+    collect: [repo_urls]
+
+  - id: pack-repos
+    title: Pack Repositories
+    prompt: "Packing repositories with RepoMix to create versioned snapshots..."
+    action: skill-invoke
+    collect: [snapshot_ids]
+
+  - id: collect-context
+    title: Additional Context
+    prompt: "Provide any additional context about this codebase: team conventions, known issues, architecture decisions."
+    action: store
+    store_as: document
+    collect: [additional_context]
+
+  - id: generate-rules
+    title: Generate Rules from Codebase
+    prompt: "Ready to analyze the codebase snapshots and generate coding rules."
+    action: generate
+    generator: rules-from-context
+
+  - id: generate-requirements
+    title: Generate Architectural Summary
+    prompt: "Ready to generate an architectural summary and requirements from the codebase."
+    action: generate
+    generator: requirements-from-context

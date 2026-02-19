@@ -1,53 +1,85 @@
 /**
- * Data store interface for institutional memory operations
+ * Data store interface for institutional memory operations (v2.0)
  *
- * This abstraction allows for swapping between different storage backends
- * (e.g., Confluence via Atlassian MCP, Supabase, etc.)
+ * Abstraction layer allowing different storage backends
+ * (Supabase by default, Confluence legacy).
  */
 
-import {
-  FetchRulesParams,
-  FetchRulesResult,
-  SaveInsightsParams,
-  SaveInsightsResult,
-} from './types.js';
+import type {
+  MemoryType,
+  SessionStatus,
+  ProjectRow,
+  MemoryRow,
+  RepositoryRow,
+  SessionRow,
+} from './supabase-types.js';
 
-/**
- * Interface for data store operations
- */
+export type {
+  MemoryType,
+  SessionStatus,
+  ProjectRow,
+  MemoryRow,
+  RepositoryRow,
+  SessionRow,
+};
+
 export interface IDataStore {
-  /**
-   * Get the backend-specific store identifier
-   * @returns Promise resolving to the store ID (e.g., Atlassian Cloud ID, Supabase project ref)
-   * @throws {DataStoreError} If unable to retrieve store ID
-   */
+  initialize(): Promise<void>;
+  healthCheck(): Promise<boolean>;
   getStoreId(): Promise<string>;
 
-  /**
-   * Fetch rules from the institutional memory
-   * @param params - Parameters for filtering and limiting results
-   * @returns Promise resolving to rules and metadata
-   * @throws {DataStoreError} If unable to fetch rules
-   */
-  fetchRules(params: FetchRulesParams): Promise<FetchRulesResult>;
+  // Projects
+  createProject(params: {
+    name: string;
+    org?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ProjectRow>;
+  listProjects(): Promise<ProjectRow[]>;
+  getProject(id: string): Promise<ProjectRow | null>;
 
-  /**
-   * Save insights to the institutional memory
-   * @param params - Insights to save with context and metadata
-   * @returns Promise resolving to save result with page information
-   * @throws {DataStoreError} If unable to save insights
-   */
-  saveInsights(params: SaveInsightsParams): Promise<SaveInsightsResult>;
+  // Memories
+  fetchMemories(params: {
+    project_id: string;
+    memory_type?: MemoryType;
+    tags?: string[];
+    query?: string;
+    limit?: number;
+  }): Promise<MemoryRow[]>;
+  upsertMemory(params: {
+    project_id: string;
+    memory_type: MemoryType;
+    title: string;
+    content: Record<string, unknown>;
+    id?: string;
+    tags?: string[];
+    category?: string;
+    description?: string;
+    confidence?: number;
+    source_role?: string;
+  }): Promise<MemoryRow>;
 
-  /**
-   * Initialize the data store connection
-   * @throws {DataStoreError} If initialization fails
-   */
-  initialize(): Promise<void>;
+  // Repositories
+  saveRepository(params: {
+    project_id: string;
+    url: string;
+    snapshot: string;
+    file_tree?: Record<string, unknown>;
+    version_label?: string;
+    token_count?: number;
+  }): Promise<RepositoryRow>;
 
-  /**
-   * Health check for the data store connection
-   * @returns Promise resolving to true if healthy
-   */
-  healthCheck(): Promise<boolean>;
+  // Sessions
+  createSession(params: {
+    project_id: string;
+    playbook_id: string;
+  }): Promise<SessionRow>;
+  getSession(id: string): Promise<SessionRow | null>;
+  updateSession(
+    id: string,
+    updates: {
+      current_step?: number;
+      collected_data?: Record<string, unknown>;
+      status?: SessionStatus;
+    }
+  ): Promise<SessionRow>;
 }

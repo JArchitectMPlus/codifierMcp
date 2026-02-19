@@ -76,6 +76,53 @@ const envSchema = z.object({
     .default('info')
     .describe('Logging level'),
 
+  // AWS Athena Configuration (optional — only needed when using query_data tool)
+  AWS_REGION: z
+    .string()
+    .optional()
+    .describe('AWS region for Athena queries'),
+
+  AWS_ACCESS_KEY_ID: z
+    .string()
+    .optional()
+    .describe('AWS access key ID for Athena authentication'),
+
+  AWS_SECRET_ACCESS_KEY: z
+    .string()
+    .optional()
+    .describe('AWS secret access key for Athena authentication'),
+
+  ATHENA_S3_OUTPUT_LOCATION: z
+    .string()
+    .optional()
+    .describe('S3 URI for Athena query output (e.g., s3://my-bucket/athena-results/)'),
+
+  ATHENA_WORKGROUP: z
+    .string()
+    .default('primary')
+    .describe('Athena workgroup name (default: "primary")'),
+
+  ATHENA_TIMEOUT_SECONDS: z
+    .string()
+    .default('60')
+    .describe('Athena query timeout in seconds (default: "60")'),
+
+  // VCS Token Configuration (optional — used by pack_repo for private repositories)
+  GITHUB_TOKEN: z
+    .string()
+    .optional()
+    .describe('GitHub personal access token for cloning private repositories'),
+
+  GITLAB_TOKEN: z
+    .string()
+    .optional()
+    .describe('GitLab personal access token for cloning private repositories'),
+
+  BITBUCKET_TOKEN: z
+    .string()
+    .optional()
+    .describe('Bitbucket app password or access token for cloning private repositories'),
+
   // Transport Configuration
   TRANSPORT_MODE: z
     .enum(['stdio', 'http'])

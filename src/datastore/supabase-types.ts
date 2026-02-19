@@ -1,6 +1,9 @@
 /**
- * TypeScript types for Supabase database schema
+ * TypeScript types for Supabase database schema (v2.0)
  */
+
+export type MemoryType = 'rule' | 'document' | 'api_contract' | 'learning' | 'research_finding';
+export type SessionStatus = 'active' | 'completed' | 'abandoned';
 
 /** Row type for the projects table */
 export interface ProjectRow {
@@ -16,7 +19,7 @@ export interface ProjectRow {
 export interface MemoryRow {
   id: string;
   project_id: string;
-  memory_type: 'rule' | 'document' | 'api_contract';
+  memory_type: MemoryType;
   rule_id: string | null;
   title: string;
   category: string | null;
@@ -25,19 +28,41 @@ export interface MemoryRow {
   usage_count: number;
   content: Record<string, unknown>;
   embedding: number[] | null;
+  tags: string[];
+  source_role: string | null;
   created_at: string;
   updated_at: string;
 }
 
-/** Row type for the insights table */
-export interface InsightRow {
+/** Row type for the repositories table */
+export interface RepositoryRow {
   id: string;
   project_id: string;
-  context: string;
-  insights: Record<string, unknown>[];
-  source: string | null;
-  tags: string[];
-  metadata: Record<string, unknown>;
-  embedding: number[] | null;
+  url: string;
+  snapshot: string | null;
+  file_tree: Record<string, unknown>;
+  version_label: string | null;
+  token_count: number | null;
+  created_at: string;
+}
+
+/** Row type for the sessions table */
+export interface SessionRow {
+  id: string;
+  project_id: string;
+  playbook_id: string;
+  current_step: number;
+  collected_data: Record<string, unknown>;
+  status: SessionStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Row type for the api_keys table */
+export interface ApiKeyRow {
+  id: string;
+  project_id: string;
+  key_hash: string;
+  label: string | null;
   created_at: string;
 }

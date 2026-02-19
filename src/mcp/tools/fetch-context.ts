@@ -1,135 +1,102 @@
 /**
- * fetch_context MCP tool implementation
+ * fetch_context MCP tool implementation (v2.0)
  */
 
 import { z } from 'zod';
 import { FetchContextParamsSchema, type FetchContextParams } from '../schemas.js';
 import { logger } from '../../utils/logger.js';
 import { McpToolError } from '../../utils/errors.js';
-import { ContextService } from '../../services/context-service.js';
+import type { IDataStore } from '../../datastore/interface.js';
+import type { MemoryRow } from '../../datastore/supabase-types.js';
 
-/**
- * Tool definition for fetch_context
- */
 export const FetchContextTool = {
   name: 'fetch_context',
   description:
-    'Retrieve relevant institutional memory based on a query. ' +
-    'Returns rules, documents, or API contracts that match the search criteria. ' +
-    'Use this to access project conventions, architectural decisions, and best practices.',
+    'Retrieve institutional memory scoped to a project. ' +
+    'Supports filtering by memory_type, tags, and free-text query. ' +
+    'Use this to access rules, API contracts, documents, learnings, and research findings.',
   inputSchema: {
     type: 'object',
     properties: {
+      project_id: {
+        type: 'string',
+        description: 'The project UUID to scope the query',
+      },
+      memory_type: {
+        type: 'string',
+        enum: ['rule', 'document', 'api_contract', 'learning', 'research_finding'],
+        description: 'Filter by memory type',
+      },
+      tags: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Filter by tags (all supplied tags must be present)',
+      },
       query: {
         type: 'string',
-        description: 'Search query for retrieving relevant institutional memory',
-      },
-      context_type: {
-        type: 'string',
-        enum: ['rules', 'documents', 'api-contracts', 'all'],
-        default: 'all',
-        description: 'Type of context to retrieve',
+        description: 'Full-text search applied to title and content',
       },
       limit: {
         type: 'number',
         description: 'Maximum number of results to return (1-100)',
-        default: 10,
+        default: 20,
         minimum: 1,
         maximum: 100,
       },
-      category: {
-        type: 'string',
-        description: 'Filter by specific category (e.g., "code-quality", "mcp-protocol")',
-      },
     },
-    required: ['query'],
+    required: ['project_id'],
   },
 } as const;
 
-/**
- * Handler for fetch_context tool
- *
- * Uses ContextService for advanced filtering, relevance scoring, and ranking.
- *
- * @param params - Validated tool parameters
- * @param contextService - Context service instance for retrieving rules
- * @returns Tool response with fetched context
- * @throws {McpToolError} If context fetching fails
- */
 export async function handleFetchContext(
   params: unknown,
-  contextService: ContextService
+  dataStore: IDataStore
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   try {
     logger.debug('fetch_context called', params);
 
-    // Validate parameters
-    const validatedParams: FetchContextParams = FetchContextParamsSchema.parse(params);
+    const validated: FetchContextParams = FetchContextParamsSchema.parse(params);
 
     logger.info('Fetching context', {
-      query: validatedParams.query,
-      type: validatedParams.context_type,
-      limit: validatedParams.limit,
-      category: validatedParams.category,
+      project_id: validated.project_id,
+      memory_type: validated.memory_type,
+      tags: validated.tags,
+      query: validated.query,
+      limit: validated.limit,
     });
 
-    // Use ContextService for advanced filtering and relevance scoring
-    const result = await contextService.fetchContext({
-      query: validatedParams.query,
-      contextType: validatedParams.context_type,
-      category: validatedParams.category,
-      limit: validatedParams.limit,
+    const memories = await dataStore.fetchMemories({
+      project_id: validated.project_id,
+      memory_type: validated.memory_type,
+      tags: validated.tags,
+      query: validated.query,
+      limit: validated.limit,
     });
 
-    logger.info('Context fetched successfully', {
-      ruleCount: result.rules.length,
-      totalFound: result.metadata.totalFound,
-      filtered: result.metadata.filtered,
-    });
+    logger.info('Context fetched successfully', { count: memories.length });
 
-    // Format response for MCP client
-    const formattedRules = result.rules
-      .map(
-        (rule) =>
-          `## ${rule.title} (${rule.id})\n\n` +
-          `**Category:** ${rule.category}\n` +
-          `**Description:** ${rule.description}\n\n` +
-          (rule.patterns && rule.patterns.length > 0
-            ? `**Patterns (DO):**\n${rule.patterns.map((p) => `- ${p}`).join('\n')}\n\n`
-            : '') +
-          (rule.antipatterns && rule.antipatterns.length > 0
-            ? `**Antipatterns (DON'T):**\n${rule.antipatterns.map((a) => `- ${a}`).join('\n')}\n\n`
-            : '') +
-          (rule.examples && rule.examples.length > 0
-            ? `**Examples:**\n${rule.examples.map((e) => `- ${e}`).join('\n')}\n\n`
-            : '')
-      )
-      .join('\n---\n\n');
+    const formatted = memories.map(formatMemory).join('\n---\n\n');
 
-    // Build metadata summary
-    const metadataSummary = [
-      `**Query:** ${validatedParams.query}`,
-      `**Context Type:** ${validatedParams.context_type}`,
-      validatedParams.category ? `**Category Filter:** ${validatedParams.category}` : null,
-      `**Results:** ${result.rules.length} of ${result.metadata.filtered} (total found: ${result.metadata.totalFound})`,
+    const summary = [
+      `**Project:** ${validated.project_id}`,
+      validated.memory_type ? `**Type:** ${validated.memory_type}` : null,
+      validated.query ? `**Query:** ${validated.query}` : null,
+      validated.tags?.length ? `**Tags:** ${validated.tags.join(', ')}` : null,
+      `**Results:** ${memories.length}`,
     ]
       .filter(Boolean)
       .join('\n');
 
-    const response = {
+    return {
       content: [
         {
           type: 'text',
           text:
-            `# Institutional Memory Context\n\n` +
-            `${metadataSummary}\n\n` +
-            `---\n\n` +
-            (formattedRules || 'No matching rules found.'),
+            `# Institutional Memory Context\n\n${summary}\n\n---\n\n` +
+            (formatted || 'No matching memories found.'),
         },
       ],
     };
-
-    return response;
   } catch (error) {
     logger.error('Failed to fetch context', { error });
 
@@ -147,4 +114,26 @@ export async function handleFetchContext(
       error instanceof Error ? error : undefined
     );
   }
+}
+
+function formatMemory(row: MemoryRow): string {
+  const lines: string[] = [
+    `## ${row.title}`,
+    `**ID:** ${row.id}`,
+    `**Type:** ${row.memory_type}`,
+  ];
+
+  if (row.category) lines.push(`**Category:** ${row.category}`);
+  if (row.description) lines.push(`**Description:** ${row.description}`);
+  if (row.tags.length > 0) lines.push(`**Tags:** ${row.tags.join(', ')}`);
+  if (row.source_role) lines.push(`**Source Role:** ${row.source_role}`);
+  if (row.confidence !== undefined) lines.push(`**Confidence:** ${row.confidence}`);
+
+  lines.push('');
+  lines.push('**Content:**');
+  lines.push('```json');
+  lines.push(JSON.stringify(row.content, null, 2));
+  lines.push('```');
+
+  return lines.join('\n');
 }

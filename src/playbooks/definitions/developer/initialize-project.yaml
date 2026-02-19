@@ -1,0 +1,49 @@
+id: initialize-project
+name: Initialize Project
+role: developer
+description: Set up a new project with name, description, SOW, repos, and generate initial artifacts.
+steps:
+  - id: collect-name
+    title: Project Name
+    prompt: "What is the name of this project?"
+    action: store
+    store_as: document
+    collect: [project_name]
+
+  - id: collect-description
+    title: Project Description
+    prompt: "Describe the project: its purpose, tech stack, and key stakeholders."
+    action: store
+    store_as: document
+    collect: [description]
+
+  - id: collect-sow
+    title: Scope of Work
+    prompt: "What is the scope of work? List key deliverables and success criteria."
+    action: store
+    store_as: document
+    collect: [sow]
+
+  - id: collect-repos
+    title: Repositories
+    prompt: "Provide repository URL(s) for this project (one per line). Or 'skip' to continue without repos."
+    action: skill-invoke
+    collect: [repo_urls]
+
+  - id: generate-rules
+    title: Generate Project Rules
+    prompt: "Ready to generate coding rules and standards based on the project context collected."
+    action: generate
+    generator: rules-from-context
+
+  - id: generate-requirements
+    title: Generate Requirements
+    prompt: "Ready to generate detailed requirements document from the project description and SOW."
+    action: generate
+    generator: requirements-from-context
+
+  - id: generate-roadmap
+    title: Generate Roadmap
+    prompt: "Ready to generate implementation roadmap from the requirements."
+    action: generate
+    generator: roadmap-from-requirements

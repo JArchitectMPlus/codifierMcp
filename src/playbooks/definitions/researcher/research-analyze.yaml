@@ -1,0 +1,50 @@
+id: research-analyze
+name: Research and Analyze
+role: researcher
+description: Data research workflow - define objective, discover schema, generate queries, execute, and synthesize findings.
+steps:
+  - id: collect-objective
+    title: Research Objective
+    prompt: "What is your research objective? Describe what you want to learn or prove."
+    action: store
+    store_as: research_finding
+    collect: [objective]
+
+  - id: collect-context
+    title: Research Context
+    prompt: "Provide any relevant context: time period, known constraints, relevant business metrics."
+    action: store
+    store_as: document
+    collect: [context]
+
+  - id: discover-schema
+    title: Discover Data Schema
+    prompt: "Discovering available tables in the data warehouse..."
+    action: data-query
+    query_operation: list-tables
+
+  - id: select-tables
+    title: Select Relevant Tables
+    prompt: "Based on the schema discovered, which tables are relevant to your objective? Provide table names."
+    action: data-query
+    query_operation: describe-tables
+    collect: [selected_tables]
+
+  - id: generate-queries
+    title: Generate SQL Queries
+    prompt: "Ready to generate SQL queries based on the objective and schema."
+    action: generate
+    generator: queries-from-objective
+
+  - id: execute-queries
+    title: Execute Queries
+    prompt: "Execute the generated queries against the data warehouse."
+    action: data-query
+    query_operation: execute-query
+    collect: [query_results]
+
+  - id: synthesize-findings
+    title: Synthesize Findings
+    prompt: "Ready to synthesize query results into a research findings report."
+    action: generate
+    generator: research-synthesis
