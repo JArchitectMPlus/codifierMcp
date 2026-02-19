@@ -17,7 +17,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 RUN apk add --no-cache python3 py3-pip \
-    && pip3 install --break-system-packages aws-athena-mcp
+    && pip3 install --break-system-packages "pydantic<2.12" aws-athena-mcp
 
 COPY --from=builder /app/dist/ dist/
 

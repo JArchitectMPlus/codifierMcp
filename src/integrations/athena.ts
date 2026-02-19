@@ -79,11 +79,16 @@ export class AthenaClient {
     this.assertConnected();
     logger.info('Describing Athena tables', { tableNames });
 
-    const result = await this.client!.callTool({
-      name: 'describe_tables',
-      arguments: { table_names: tableNames },
-    });
-    return this.extractAndTruncate(result);
+    // Server exposes describe_table (singular) — call once per table and merge
+    const results: unknown[] = [];
+    for (const tableName of tableNames) {
+      const result = await this.client!.callTool({
+        name: 'describe_table',
+        arguments: { table_name: tableName },
+      });
+      results.push(this.extractAndTruncate(result));
+    }
+    return results.length === 1 ? results[0] : results;
   }
 
   async executeQuery(query: string): Promise<unknown> {
@@ -98,11 +103,50 @@ export class AthenaClient {
 
     logger.info('Executing Athena query', { query: query.slice(0, 200) });
 
-    const result = await this.client!.callTool({
-      name: 'execute_query',
+    // Server uses run_query → poll get_status → get_result
+    const runResult = await this.client!.callTool({
+      name: 'run_query',
       arguments: { query },
     });
-    return this.extractAndTruncate(result);
+
+    const runText = this.extractAndTruncate(runResult);
+
+    // Extract query execution ID from response
+    let queryId: string | undefined;
+    if (typeof runText === 'string') {
+      const match = runText.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+      if (match) queryId = match[1];
+    } else if (runText && typeof runText === 'object') {
+      queryId = (runText as Record<string, unknown>).query_execution_id as string;
+    }
+
+    if (!queryId) {
+      // run_query returned results directly (no async execution ID)
+      return runText;
+    }
+
+    // Poll get_status until SUCCEEDED or terminal state
+    const maxAttempts = 30;
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const statusResult = await this.client!.callTool({
+        name: 'get_status',
+        arguments: { query_execution_id: queryId },
+      });
+      const statusText = String(this.extractAndTruncate(statusResult) ?? '');
+      logger.debug('Athena query status', { queryId, statusText });
+
+      if (statusText.includes('SUCCEEDED')) break;
+      if (statusText.includes('FAILED') || statusText.includes('CANCELLED')) {
+        throw new CodifierError(`Athena query failed: ${statusText}`);
+      }
+    }
+
+    const resultResponse = await this.client!.callTool({
+      name: 'get_result',
+      arguments: { query_execution_id: queryId },
+    });
+    return this.extractAndTruncate(resultResponse);
   }
 
   private assertConnected(): void {
