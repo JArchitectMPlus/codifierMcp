@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**CodifierMcp** is a remotely-installable MCP (Model Context Protocol) server for MemoryBuilder, an institutional memory system for AI-driven development. The system captures and synthesizes organizational knowledge from software development projects, creating a self-reinforcing feedback loop that improves AI-driven development through accumulated institutional knowledge. Deployed at `codifier-mcp.fly.dev` with dual transport support (stdio for local use, HTTP for remote access).
+**CodifierMcp v2.0** is a remotely-installable MCP (Model Context Protocol) server for MemoryBuilder — an institutional memory system for AI-driven development across organizational roles. The system captures and synthesizes knowledge from software development projects and research workflows, creating a self-reinforcing feedback loop that improves AI-driven work through accumulated institutional knowledge. Deployed at `codifier-mcp.fly.dev` with dual transport support (stdio for local use, SSE for remote access).
+
+Codifier's four core capabilities:
+1. **Org-scoped knowledge persistence** — memories from any person, any role, any project stored in a shared, searchable KB
+2. **Authenticated connectors to proprietary data** — RepoMix for code repos, AWS Athena for data warehouses
+3. **Guided friction reduction via Playbooks** — role-specific multi-step workflows (Developer, Researcher)
+4. **Multi-surface access** — IDE via MCP, future Teams bot and CLI
 
 ## Build and Development Commands
 
@@ -20,95 +26,67 @@ The compiled output is placed in the `dist/` directory with `dist/index.js` as t
 
 ## Architecture
 
-### Three-Tier Memory System
+### Four-Core Architecture (v2.0)
 
-The core architecture is based on three memory layers with different retrieval characteristics:
+**Core 1: Remote MCP Server**
+- SSE transport via Express (StreamableHTTP + SSE fallback)
+- Bearer token auth middleware (swap to Entra ID in v2.1)
+- stdio fallback for local dev/testing
+- Hosted on Fly.io (`min_machines_running = 1` during MVP demo)
 
-1. **Immediate Context Layer**: Hot memory for active project rules (<400ms retrieval)
-2. **Working Memory Layer**: Recent architectural decisions (1-2s retrieval)
-3. **Long-term Knowledge Base**: Historical patterns with complete version history
+**Core 2: Shared Knowledge Base (Supabase + pgvector)**
+- All memory entities scoped to a project via `project_id`
+- Exact-match retrieval for MVP (vector similarity search deferred to v2.1)
+- Embeddings stored on write, activated for semantic search in v2.1
+
+**Core 3: Playbook Engine**
+- Linear state machine (`PlaybookRunner`) — no branching for MVP
+- Declarative YAML playbook definitions, role-specific
+- Step action types: `store`, `skill-invoke`, `generate`, `data-query`
+- `generate` steps assemble context and return prompt to client's LLM (Codifier stays LLM-agnostic)
+
+**Core 4: Direct Integrations**
+- **RepoMix**: programmatic `pack()` API — no subprocess, installed as npm dependency
+- **AWS Athena**: spawned as sidecar subprocess via `StdioClientTransport` inside same container
 
 ### Memory Components
 
-The system manages three primary types of institutional knowledge:
+The system manages these types of institutional knowledge (stored in `memories` table):
 
-- **Rules System (YAML)**: Project conventions, security patterns, testing standards, business logic patterns, and integration rules. Each rule includes confidence scores, usage metrics, validation history, and relationship mappings.
-
-- **Documents/Guides (Markdown)**: Technical specifications, ADRs (Architecture Decision Records), runbooks, and best practices.
-
-- **API Contracts (YAML/OpenAPI)**: Endpoint specifications, schemas, authentication requirements, and version compatibility.
-
-### Knowledge Graph Architecture
-
-Inspired by Supermemory.ai, the system uses:
-- Hybrid graph database with vector indexing for semantic relationships
-- RAG (Retrieval-Augmented Generation) architecture for context-aware retrieval
-- MCP protocol for standardized integration across AI platforms
+- **rule**: Project conventions, security patterns, coding standards
+- **document**: Technical specs, ADRs, runbooks, best practices
+- **api_contract**: Endpoint specs, schemas, authentication requirements
+- **learning**: Insights captured during AI-assisted development sessions
+- **research_finding**: Data analysis results, synthesis from Researcher playbooks
 
 ### Processing Pipeline
 
-The feedback loop follows: Input → Build & Generate (with memory enrichment) → Evaluate & Learn (pattern extraction) → Memory Update (rule refinement and graph updates).
+Input → Playbook step (`store` / `skill-invoke` / `data-query`) → `generate` step (client LLM produces artifact) → user confirms → `memories` table updated → future `fetch_context` calls benefit from accumulated knowledge.
 
-## Data Store Strategy
+## Data Storage Strategy
 
-The project successfully migrated to Supabase while maintaining backward compatibility:
+**Default**: Supabase (PostgreSQL + pgvector)
 
-**Current (Default)**: Supabase database with PostgreSQL and pgvector extension. Provides structured storage, semantic search, and relationship mapping. Set via `DATA_STORE=supabase` (default).
+### Schema (5 Tables)
 
-**Legacy (Optional)**: Confluence Cloud via Atlassian MCP tools. Still supported for teams with existing Confluence infrastructure. Set via `DATA_STORE=confluence`.
+| Table | Key Fields | Purpose |
+|---|---|---|
+| `projects` | id, name, org, metadata | Top-level container; all entities scoped to a project |
+| `repositories` | id, project_id, url, snapshot (text), file_tree (JSONB), version_label | Versioned repo snapshots via RepoMix |
+| `memories` | id, project_id, memory_type (enum), title, content, tags, confidence, usage_count, embedding (vector), source_role | Rules, docs, contracts, learnings, research findings |
+| `sessions` | id, project_id, playbook_id, current_step, collected_data (JSONB), status (enum: active/completed/abandoned) | Playbook execution state |
+| `api_keys` | id, project_id, key_hash | Maps API keys to allowed projects for RLS |
 
-**Why This Works**:
-- Clean abstraction layer (IDataStore interface) enabled seamless migration
-- Factory pattern (`createDataStore()`) switches between implementations
-- Both data stores share the same interface (`getStoreId()`, `fetchRules()`, `saveInsights()`)
-- Teams can choose the storage backend that fits their needs
+**RLS**: All tables have Row Level Security policies scoping queries by `project_id`. `api_keys` maps each key to its allowed project(s).
 
-## Implementation Phases
-
-Development follows a phased approach:
-
-**Phase 1: Core Infrastructure** (COMPLETE)
-- Foundation: utilities, configuration, types, error handling
-- Data store abstraction layer with IDataStore interface
-- Dual transport: stdio (local) and HTTP (remote with Bearer auth)
-- Supabase database with PostgreSQL and pgvector
-- Confluence integration (legacy/optional)
-- Basic MCP server with fetch_context and update_memory operations
-- Deployed to Fly.io with suspend-on-idle
-
-**Phase 2: Playbook Engine** (Next)
-- Sequential task execution from structured playbooks
-- Conditional logic and branching workflows
-- State management across playbook steps
-- Error recovery and retry mechanisms
-
-**Phase 3: Skill Orchestration**
-- Multi-skill coordination for complex workflows
-- Dependency resolution between skills
-- Parallel execution where possible
-- Skill composition and reusability
-
-**Phase 4: Teams Bot Integration**
-- Microsoft Teams bot interface
-- Real-time collaboration features
-- Team-wide knowledge sharing
-- Administrative controls and permissions
-
-## MCP Protocol Implementation
-
-When implementing MCP protocol handlers, the core operations are:
-
-- `fetch_context`: Retrieve relevant institutional memory based on semantic search and context-aware filtering
-- `update_memory`: Save new learnings, update rules, and maintain the relationship graph
+**Legacy (Optional)**: Confluence Cloud via Atlassian MCP (`DATA_STORE=confluence`). Still supported via the `AtlassianDataStore` implementation.
 
 ## MCP Architecture
 
-CodifierMcp supports dual transport modes and dual data stores:
-
 ```
-MCP Client (Claude Desktop, GitHub Copilot, etc.)
-    ↓ stdio (local) OR HTTP (remote with Bearer auth)
-CodifierMcp Server (this project - business logic)
+MCP Client (Claude Desktop, Cursor, etc.)
+    ↓ stdio (local) OR SSE/StreamableHTTP (remote with Bearer auth)
+CodifierMcp Server (this project)
     ↓ factory pattern: createDataStore(config)
     ├── SupabaseDataStore (default)
     │   ↓ @supabase/supabase-js
@@ -117,82 +95,100 @@ CodifierMcp Server (this project - business logic)
     └── AtlassianDataStore (optional)
         ↓ REST API
         └── Confluence Cloud (legacy)
+
+    Direct Integrations (hardcoded for MVP):
+    ├── RepoMix (npm dependency, programmatic pack() API)
+    └── AWS Athena MCP (sidecar subprocess via StdioClientTransport)
 ```
 
-**Key Design Principles**:
-- CodifierMcp implements the IDataStore abstraction layer
-- Factory pattern switches between SupabaseDataStore and AtlassianDataStore
-- Dual transport: stdio for local MCP clients, HTTP for remote access
-- Bearer token authentication for HTTP mode
-- Clean separation allows future storage backends
+## MCP Tool Surface (7 Tools)
 
-## Data Storage Strategy
-
-**Current (Default)**: Supabase database with PostgreSQL
-- Three core tables: `projects`, `memories`, `insights`
-- pgvector extension for embeddings and semantic search
-- Structured storage for rules, documents, and API contracts
-- Audit trails with `created_at` and `updated_at` timestamps
-- Relationship management via foreign keys
-
-**Legacy (Optional)**: Confluence pages
-- Rules stored in YAML code blocks within Confluence pages
-- Insights stored as dated child pages under a parent "Memory Insights" page
-- Uses Atlassian MCP tools for all Confluence operations
-- Migration tools available: `scripts/migrate-confluence-to-supabase.ts`
-
-## Key Success Metrics
-
-The system aims for:
-- Sub-500ms knowledge retrieval latency
-- 40% reduction in repeated architectural mistakes
-- Pattern extraction and identification from development artifacts
+| Tool | Description |
+|---|---|
+| `fetch_context` | Retrieve memories filtered by `project_id`, `memory_type`, and/or `tags` |
+| `update_memory` | Create or update a memory (rule, doc, contract, learning, research_finding) |
+| `manage_projects` | Create, list, or switch active project |
+| `run_playbook` | Start a Playbook by ID; creates session, returns first step |
+| `advance_step` | Submit input for the current playbook step; returns next step or completion |
+| `pack_repo` | Condense a repo via RepoMix; store as versioned snapshot in `repositories` |
+| `query_data` | Schema discovery and query execution against Athena (`list-tables`, `describe-tables`, `execute-query`) |
 
 ## Technology Stack
 
 - **TypeScript** with strict mode enabled
-- **ESM (ECMAScript Modules)** with type: "module" in package.json
+- **ESM (ECMAScript Modules)** with `type: "module"` in package.json
 - **Target**: ES2022 with ESNext module system
 - **Zod** for runtime validation of configuration and data schemas
-- **MCP SDK** (@modelcontextprotocol/sdk) for protocol implementation
-- **Express** for HTTP transport with CORS support
-- **Supabase** (@supabase/supabase-js) for database and vector storage (default)
-- **Atlassian MCP** for Confluence integration (optional)
-- **Fly.io** for deployment with suspend-on-idle
+- **MCP SDK** (`@modelcontextprotocol/sdk`) for protocol implementation
+- **Express** for HTTP transport with CORS support (SSE + StreamableHTTP)
+- **Supabase** (`@supabase/supabase-js`) for database and vector storage (default)
+- **RepoMix** (`repomix` npm package) for programmatic repo condensation
+- **AWS Athena MCP** (sidecar subprocess) for data warehouse querying
+- **Fly.io** for deployment
+
+## File Structure (v2.0)
+
+```
+src/
+├── index.ts                    # Entry point (transport branching)
+├── config/
+│   └── env.ts                  # Zod-validated configuration
+├── http/
+│   ├── server.ts               # Express server (StreamableHTTP + SSE)
+│   └── auth-middleware.ts      # Bearer token authentication
+├── datastore/
+│   ├── interface.ts            # IDataStore abstraction
+│   ├── factory.ts              # createDataStore() factory
+│   ├── supabase-datastore.ts   # Supabase implementation (default)
+│   ├── supabase-client.ts      # Supabase client wrapper
+│   ├── supabase-types.ts       # Supabase type definitions
+│   ├── atlassian-datastore.ts  # Confluence implementation (legacy)
+│   └── confluence-client.ts    # Confluence REST API client
+├── mcp/
+│   ├── server.ts               # Transport-agnostic MCP server
+│   ├── schemas.ts              # Zod schemas for tool parameters
+│   └── tools/
+│       ├── fetch-context.ts
+│       ├── update-memory.ts
+│       ├── manage-projects.ts
+│       ├── run-playbook.ts
+│       ├── advance-step.ts
+│       ├── pack-repo.ts
+│       └── query-data.ts
+├── playbooks/
+│   ├── PlaybookRunner.ts       # Linear state machine
+│   ├── loader.ts               # YAML playbook loader + validation
+│   ├── generators/             # Prompt templates for generate steps
+│   │   ├── rules-from-context.ts
+│   │   ├── evals-from-rules.ts
+│   │   ├── requirements-from-context.ts
+│   │   ├── roadmap-from-requirements.ts
+│   │   ├── queries-from-objective.ts
+│   │   └── research-synthesis.ts
+│   └── definitions/            # YAML playbook files
+│       ├── developer/
+│       │   ├── initialize-project.yaml
+│       │   └── brownfield-onboard.yaml
+│       └── researcher/
+│           └── research-analyze.yaml
+├── integrations/
+│   ├── repomix.ts              # RepoMix programmatic API wrapper
+│   └── athena.ts               # Athena MCP sidecar client
+├── services/
+│   ├── context-service.ts      # Rule retrieval with relevance scoring
+│   └── memory-service.ts       # Insight enrichment and storage
+└── utils/
+    ├── logger.ts               # Logging utility (stderr for MCP)
+    └── errors.ts               # Custom error classes
+```
 
 ## Development Rules and Best Practices
 
 **IMPORTANT**: All development work must follow the rules defined in `docs/rules.yaml`.
 
-The rules file contains institutional knowledge about this project, including:
-- Production code quality standards (R001-R002)
-- MCP protocol best practices (R003)
-- Module system consistency (R004)
-- Clean abstraction patterns (R005)
-- Error handling standards (R006)
-- Configuration management (R007)
-- TypeScript best practices (R008)
-- Module organization (R009)
-- Test-friendly design patterns (R010)
-- Documentation standards (R011)
-
 **Before writing code**:
-1. Review relevant rules in `docs/rules.yaml`
-2. Follow the patterns (dos) specified in each rule
-3. Avoid the antipatterns (don'ts) specified in each rule
-4. Reference the examples provided
+Review relevant rules in `docs/rules.yaml`
 
 **After writing code**:
-1. Validate your code against the rules
-2. Add evaluations to `docs/evals.yaml` if introducing new patterns
-3. Update rules if you discover new best practices
-
-**Key Rules Summary**:
-- Write production-ready code with no placeholders (R001)
-- Keep implementations lean and concise (R002)
-- Use stderr for logging in MCP servers (R003)
-- Use ESM with .js extensions in imports (R004)
-- Implement clean abstractions for future migration (R005)
-- Use custom error classes with proper context (R006)
-- Validate configuration with Zod schemas (R007)
-- Enable TypeScript strict mode (R008)
+Validate your code against the rules
+Add evaluations to `docs/evals.yaml` if introducing new patterns
