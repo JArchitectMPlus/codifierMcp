@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "MCP server for institutional memory management",
   "main": "dist/index.js",
+  "bin": {
+    "codifier": "dist/cli/bin/codifier.js"
+  },
   "type": "module",
   "scripts": {
     "build": "tsc",
@@ -13,6 +16,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
     "@supabase/supabase-js": "^2.95.3",
+    "commander": "^14.0.3",
     "cors": "^2.8.5",
     "express": "^5.0.0",
     "js-yaml": "^4.1.0",

@@ -3,12 +3,11 @@
  * Stores institutional memory in Supabase Postgres.
  */
 
-import type { IDataStore, MemoryType, SessionStatus } from './interface.js';
+import type { IDataStore, MemoryType } from './interface.js';
 import type {
   ProjectRow,
   MemoryRow,
   RepositoryRow,
-  SessionRow,
 } from './supabase-types.js';
 import { CodifierSupabaseClient } from './supabase-client.js';
 import { SupabaseError, DataStoreError } from '../utils/errors.js';
@@ -360,115 +359,6 @@ export class SupabaseDataStore implements IDataStore {
       if (error instanceof SupabaseError) throw error;
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new SupabaseError(`Failed to save repository: ${message}`, error instanceof Error ? error : undefined);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Sessions
-  // ---------------------------------------------------------------------------
-
-  async createSession(params: {
-    project_id: string;
-    playbook_id: string;
-  }): Promise<SessionRow> {
-    await this.ensureInitialized();
-
-    try {
-      logger.info('Creating session', {
-        project_id: params.project_id,
-        playbook_id: params.playbook_id,
-      });
-
-      const client = this.supabaseClient.getClient();
-      const { data, error } = await client
-        .from('sessions')
-        .insert({
-          project_id: params.project_id,
-          playbook_id: params.playbook_id,
-          current_step: 0,
-          collected_data: {},
-          status: 'active',
-        })
-        .select('*')
-        .single();
-
-      if (error || !data) {
-        throw new SupabaseError(
-          `Failed to create session: ${error?.message ?? 'No data returned'}`
-        );
-      }
-
-      logger.info('Session created', { id: data.id });
-      return data as SessionRow;
-    } catch (error) {
-      if (error instanceof SupabaseError) throw error;
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new SupabaseError(`Failed to create session: ${message}`, error instanceof Error ? error : undefined);
-    }
-  }
-
-  async getSession(id: string): Promise<SessionRow | null> {
-    await this.ensureInitialized();
-
-    try {
-      logger.debug('Getting session', { id });
-
-      const client = this.supabaseClient.getClient();
-      const { data, error } = await client
-        .from('sessions')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') return null;
-        throw new SupabaseError(`Failed to get session: ${error.message}`);
-      }
-
-      return data as SessionRow | null;
-    } catch (error) {
-      if (error instanceof SupabaseError) throw error;
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new SupabaseError(`Failed to get session: ${message}`, error instanceof Error ? error : undefined);
-    }
-  }
-
-  async updateSession(
-    id: string,
-    updates: {
-      current_step?: number;
-      collected_data?: Record<string, unknown>;
-      status?: SessionStatus;
-    }
-  ): Promise<SessionRow> {
-    await this.ensureInitialized();
-
-    try {
-      logger.info('Updating session', { id, updates });
-
-      const client = this.supabaseClient.getClient();
-      const { data, error } = await client
-        .from('sessions')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select('*')
-        .single();
-
-      if (error || !data) {
-        throw new SupabaseError(
-          `Failed to update session: ${error?.message ?? 'No data returned'}`
-        );
-      }
-
-      logger.info('Session updated', { id: data.id, status: data.status });
-      return data as SessionRow;
-    } catch (error) {
-      if (error instanceof SupabaseError) throw error;
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new SupabaseError(`Failed to update session: ${message}`, error instanceof Error ? error : undefined);
     }
   }
 

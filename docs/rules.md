@@ -22,7 +22,7 @@ These rules define the implementation guardrails that all developers must follow
 
 ## 2. API and Tool Design
 
-**2.1 Tool Naming Convention.** All MCP tool names must use `snake_case` and follow a `verb_noun` pattern (e.g., `fetch_context`, `run_playbook`, `manage_projects`). Names must be stable across versions; breaking renames require a major version increment.
+**2.1 Tool Naming Convention.** All MCP tool names must use `snake_case` and follow a `verb_noun` pattern (e.g., `fetch_context`, `pack_repo`, `manage_projects`). Names must be stable across versions; breaking renames require a major version increment.
 
 **2.2 Zod Validation on All Tool Inputs.** Every MCP tool handler must define a Zod schema for its input and validate against it before any processing begins. Validation failures must return a structured error immediately without executing any business logic.
 
@@ -36,7 +36,7 @@ These rules define the implementation guardrails that all developers must follow
 
 ## 3. Data and Security
 
-**3.1 project_id Scoping on All Queries.** Every database query that reads or writes memory, repository, or session records must include a `project_id` filter. Queries without project scoping are forbidden, regardless of the calling context.
+**3.1 project_id Scoping on All Queries.** Every database query that reads or writes memory or repository records must include a `project_id` filter. Queries without project scoping are forbidden, regardless of the calling context.
 
 **3.2 Row-Level Security Enforcement.** All Supabase queries must be executed using a client that respects Row-Level Security policies. Service role clients that bypass RLS must never be used in request-handling code paths.
 
@@ -50,17 +50,15 @@ These rules define the implementation guardrails that all developers must follow
 
 ---
 
-## 4. Playbook Engine
+## 4. Agent Skills
 
-**4.1 YAML-Only Playbook Definitions.** All playbooks must be defined as YAML files. Playbook logic must not be encoded in TypeScript outside of the `PlaybookRunner` engine itself. Embedding step logic or sequences in tool handlers is forbidden.
+**4.1 Skills Are Client-Side Only.** Agent Skills are executed entirely by the client's LLM. The server must not implement workflow state, step sequencing, or session tracking of any kind. All orchestration logic lives in the client, not in MCP tool handlers.
 
-**4.2 Linear State Machine for MVP.** The `PlaybookRunner` must implement only a linear step progression for v2.0. Branching, conditional jumps, and parallel step execution are deferred to v2.1 and must not be introduced without a formal architectural revision.
+**4.2 Skills Must Be Model-Agnostic Markdown.** Each Skill is defined as a plain markdown file (`SKILL.md`). Skills must contain only natural-language instructions and references to MCP tool calls. No TypeScript, no server-side logic, and no LLM invocations from within the server are permitted.
 
-**4.3 Session State Persisted in Database Only.** All playbook session state — including current step index, step outputs, and completion status — must be stored in the database. In-memory session state that is not persisted is forbidden.
+**4.3 Skill Directory Structure.** Each Skill must reside in its own subdirectory under `skills/` and must contain a `SKILL.md` file. An optional `templates/` subdirectory may be included for reusable prompt templates. No other required structure is imposed.
 
-**4.4 skip_if_empty Behavior Must Be Explicit.** Every playbook step that may skip based on empty input must declare an explicit `skip_if_empty` field in its YAML definition. The `PlaybookRunner` must not apply implicit skip logic.
-
-**4.5 Step Outputs Must Be Typed.** Each playbook step definition must declare the expected output shape. The `PlaybookRunner` must validate step outputs before persisting session state or advancing to the next step.
+**4.4 Skills Must Reference the Shared Tool Guide.** Every `SKILL.md` must reference `shared/codifier-tools.md` for canonical MCP tool usage patterns. Tool call signatures, parameter names, and expected response shapes must not be duplicated inline — they belong only in the shared guide.
 
 ---
 
@@ -96,7 +94,7 @@ These rules define the implementation guardrails that all developers must follow
 
 **7.2 Structured JSON Logging.** All application log output must be emitted as newline-delimited JSON. Plain-text log statements are not permitted in production code paths. Every log entry must include `level`, `timestamp`, `module`, and `message`.
 
-**7.3 Machine-Readable Error Codes.** Every client-facing error condition must have a unique, documented string error code (e.g., `PROJECT_NOT_FOUND`, `PLAYBOOK_STEP_INVALID`). Error codes must not be changed once published.
+**7.3 Machine-Readable Error Codes.** Every client-facing error condition must have a unique, documented string error code (e.g., `PROJECT_NOT_FOUND`, `MEMORY_NOT_FOUND`). Error codes must not be changed once published.
 
 **7.4 No Silent Error Handling.** Catch blocks must either re-throw, return a structured error response, or log at `error` level before continuing. Empty catch blocks are forbidden.
 
@@ -112,4 +110,4 @@ These rules define the implementation guardrails that all developers must follow
 
 **8.4 Health Check Endpoint Required.** The HTTP server must expose a `/health` endpoint that returns `200 OK` with no authentication requirement, suitable for Fly.io health check configuration.
 
-**8.5 Suspend-on-Idle Configuration.** The Fly.io deployment must be configured with `auto_stop_machines = true` and `min_machines_running = 0`. Handlers must be stateless and tolerate cold starts (see rule 1.6).
+**8.5 Suspend-on-Idle Configuration.** The Fly.io deployment must be configured with `auto_stop_machines = "suspend"` and `min_machines_running = 0`. Because all tool handlers are stateless (see rule 1.6), the server tolerates cold starts and suspend/resume cycles without data loss.

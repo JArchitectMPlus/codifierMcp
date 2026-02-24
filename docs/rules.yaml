@@ -59,7 +59,7 @@ rules:
   - id: "R003"
     category: "mcp-protocol"
     title: "MCP Protocol Best Practices"
-    description: "Follow MCP protocol conventions strictly. Use stderr for all logging since stdout is reserved for MCP protocol communication. Define clear tool schemas with proper validation."
+    description: "Follow MCP protocol conventions strictly. Use stderr for all logging since stdout is reserved for MCP protocol communication. Define clear tool schemas with proper validation. The server exposes exactly 5 tools: fetch_context, update_memory, manage_projects, pack_repo, query_data."
     confidence: 1.0
     patterns:
       - "Use console.error (stderr) for all logging, never console.log (stdout)"
@@ -73,6 +73,7 @@ rules:
       - "Missing input validation in tool handlers"
       - "Not handling MCP transport errors gracefully"
       - "Exposing internal error details to MCP clients"
+      - "Adding tools beyond the 5 defined in the v2.0 surface (fetch_context, update_memory, manage_projects, pack_repo, query_data)"
     examples:
       - "Good: logger.error() uses console.error for MCP compatibility"
       - "Bad: console.log('Debug info') breaks MCP communication"
@@ -130,8 +131,8 @@ rules:
     examples:
       - "Good: IDataStore interface allows AtlassianDataStore or SupabaseDataStore"
       - "Bad: Interface with Confluence-specific method signatures"
-      - "Good: fetchRules() returns generic Rule[] type"
-      - "Bad: fetchRules() returns ConfluencePage type"
+      - "Good: fetchMemories() returns generic Memory[] type"
+      - "Bad: saveMemory() accepts a SupabaseRow type instead of the domain Memory type"
     metadata:
       created: "2025-01-13"
       priority: "high"
@@ -299,3 +300,26 @@ rules:
       created: "2025-01-13"
       priority: "medium"
       tags: ["documentation", "jsdoc", "comments"]
+
+  - id: "R012"
+    category: "architecture"
+    title: "Agent Skills Are Client-Side Only"
+    description: "Skills are markdown instruction files executed by the client's LLM. The server must not implement workflow state, step sequencing, or session tracking. The LLM reads the SKILL.md and calls MCP tools only for data operations."
+    confidence: 1.0
+    patterns:
+      - "Skills live in skills/<name>/SKILL.md"
+      - "Prompt templates live in skills/<name>/templates/"
+      - "Skills reference shared/codifier-tools.md for tool usage"
+      - "Server tools are stateless data operations only"
+    antipatterns:
+      - "Server-side session state for workflow tracking"
+      - "Tool handlers that advance workflow steps"
+      - "TypeScript code that encodes workflow sequences"
+      - "LLM calls from within MCP tool handlers"
+    examples:
+      - "Good: SKILL.md instructs LLM to call update_memory after generating an artifact"
+      - "Bad: advance_step tool that tracks which step a user is on"
+    metadata:
+      created: "2026-02-24"
+      priority: "critical"
+      tags: ["architecture", "skills", "stateless", "client-side"]

@@ -1,7 +1,7 @@
 /**
  * MCP Server implementation for CodifierMcp (v2.0)
  *
- * Transport-agnostic server that registers all seven MCP tools and
+ * Transport-agnostic server that registers all 5 MCP tools and
  * delegates to the IDataStore abstraction for persistence.
  */
 
@@ -20,9 +20,6 @@ import { UpdateMemoryTool, handleUpdateMemory } from './tools/update-memory.js';
 import { ManageProjectsTool, handleManageProjects } from './tools/manage-projects.js';
 import { PackRepoTool, handlePackRepo } from './tools/pack-repo.js';
 import { QueryDataTool, handleQueryData } from './tools/query-data.js';
-import { RunPlaybookTool, handleRunPlaybook } from './tools/run-playbook.js';
-import { AdvanceStepTool, handleAdvanceStep } from './tools/advance-step.js';
-import { PlaybookRunner } from '../playbooks/PlaybookRunner.js';
 
 export interface McpServerConfig {
   name: string;
@@ -36,8 +33,6 @@ export function createMcpServer(config: McpServerConfig): Server {
     version: config.version,
   });
 
-  const playbookRunner = new PlaybookRunner(config.dataStore);
-
   const server = new Server(
     { name: config.name, version: config.version },
     { capabilities: { tools: {} } }
@@ -49,8 +44,6 @@ export function createMcpServer(config: McpServerConfig): Server {
     ManageProjectsTool,
     PackRepoTool,
     QueryDataTool,
-    RunPlaybookTool,
-    AdvanceStepTool,
   ];
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -78,12 +71,6 @@ export function createMcpServer(config: McpServerConfig): Server {
 
         case 'query_data':
           return await handleQueryData(args, config.dataStore);
-
-        case 'run_playbook':
-          return await handleRunPlaybook(args, playbookRunner);
-
-        case 'advance_step':
-          return await handleAdvanceStep(args, playbookRunner);
 
         default:
           throw new CodifierError(`Unknown tool: ${name}`);

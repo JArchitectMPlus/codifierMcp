@@ -1,10 +1,10 @@
-# Codifier v2.0 — PlanOutline
+# Codifier v2.0 — PlanOutline (Revised)
 
 ## Value Proposition
 
 Codifier turns individual productivity tools into organizational capability — across roles, not just engineering.
 
-Individual tools like the compound engineering plugin, RepoMix, and Supermemory make a single developer faster. Codifier makes the *organization* faster by connecting those tools to shared institutional knowledge, proprietary data sources, authenticated org infrastructure, and surfaces beyond the IDE. And because institutional memory isn't just code — it's research findings, architectural decisions, and domain knowledge — Codifier serves multiple org roles through role-specific Playbooks that each connect to the data sources relevant to that function.
+Individual tools like the compound engineering plugin, RepoMix, and Supermemory make a single developer faster. Codifier makes the *organization* faster by connecting those tools to shared institutional knowledge, proprietary data sources, authenticated org infrastructure, and surfaces beyond the IDE. And because institutional memory isn't just code — it's research findings, architectural decisions, and domain knowledge — Codifier serves multiple org roles through role-specific Skills and Playbooks that each connect to the data sources relevant to that function.
 
 **Codifier's four irreplaceable capabilities:**
 
@@ -12,9 +12,9 @@ Individual tools like the compound engineering plugin, RepoMix, and Supermemory 
 
 2. **Authenticated connectors to proprietary data** — the org's knowledge lives behind Entra ID in SharePoint, Confluence, private GitHub repos, Athena data warehouses, and internal tools. Codifier is the bridge that brings walled-garden data into AI workflows through role-appropriate connectors.
 
-3. **Guided friction reduction (Playbooks)** — role-specific Playbooks walk users through workflows step by step. Developers get project initialization with rules and roadmaps. Researchers get data discovery and synthesis. Each role connects to the data sources and produces the artifacts relevant to their function. The difference between a gym membership and a personal trainer.
+3. **Codified workflow friction reduction (Skills + Playbooks)** — model-agnostic Agent Skills guide users through complex workflows conversationally. Developers get project initialization with rules and roadmaps. Researchers get data discovery and synthesis. Skills are reusable instruction sets that any LLM client can consume — Claude Code, Cursor, Windsurf, OpenCode, GPT — reducing friction by codifying best practices into repeatable, composable workflows. The difference between a gym membership and a personal trainer.
 
-4. **Multi-surface access** — developers use Codifier via MCP in their IDE. Researchers query data through Codifier's Athena integration. PMs and stakeholders query the knowledge base via Teams. This is how you "raise the ocean and all boats" — not just make one role faster.
+4. **Multi-surface access** — developers use Codifier via MCP in their IDE. Researchers query data through Codifier's Athena integration. PMs and stakeholders query the knowledge base via Teams. Skills distribute as files, adapting to each surface's native instruction format. This is how you "raise the ocean and all boats" — not just make one role faster.
 
 ---
 
@@ -27,29 +27,32 @@ Codifier is a **glue layer** that connects best-in-class tools to the org's uniq
 | Local dev workflow (Plan→Work→Review→Compound) | Compound Engineering Plugin | Persist learnings to shared KB via `update_memory`; inject org context into planning via `fetch_context` |
 | Memory engine (embeddings, semantic search) | Supabase + pgvector | Project/repo scoping, org-level multi-tenancy, brownfield versioning |
 | Repo condensation | RepoMix MCP | Store condensed snapshots as versioned project context |
-| Data warehouse querying | AWS Athena MCP | Schema discovery and query execution within Researcher playbooks; results persisted to shared KB |
+| Data warehouse querying | AWS Athena MCP | Schema discovery and query execution within Researcher workflows; results persisted to shared KB |
 | Spec-driven execution | GSD Framework | Codifier produces artifacts (Roadmap.md, Requirements.md) that feed into GSD or similar workflows |
+| Guided workflow orchestration | Agent Skills (open standard) | Codifier Skills guide LLMs through role-specific workflows; the LLM is the state machine, not the server |
 
 ```
-┌──────────────────────────────────────────────────┐
-│            Developer's Local Environment          │
-│                                                   │
-│  ┌─────────────────┐    ┌─────────────────────┐  │
-│  │ Compound Eng.    │    │ GSD / Other Tools   │  │
-│  │ Plugin (local    │    │ (local workflow)     │  │
-│  │ Plan→Work→Review)│    │                     │  │
-│  └────────┬─────────┘    └──────────┬──────────┘  │
-│           │                         │             │
-│           ▼                         ▼             │
-│  ┌──────────────────────────────────────────────┐ │
-│  │         Codifier MCP (remote)                │ │
-│  │                                              │ │
-│  │  • Persist learnings to shared KB            │ │
-│  │  • Fetch org context (project-scoped)        │ │
-│  │  • Run Playbooks for guided setup            │ │
-│  │  • Produce artifacts (Rules, Evals, etc.)    │ │
-│  └──────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│              User's Local Environment                │
+│                                                      │
+│  ┌─────────────────┐    ┌─────────────────────────┐  │
+│  │ IDE / Terminal   │    │ .codifier/skills/       │  │
+│  │ (Claude Code,    │    │ (Playbook Skills +      │  │
+│  │  Cursor, etc.)   │    │  slash commands)         │  │
+│  └────────┬─────────┘    └────────────┬────────────┘  │
+│           │ LLM reads Skills ◄────────┘              │
+│           │ LLM calls MCP tools as needed            │
+│           ▼                                          │
+│  ┌───────────────────────────────────────────────┐   │
+│  │         Codifier MCP Server (remote)          │   │
+│  │                                               │   │
+│  │  • fetch_context — retrieve org knowledge     │   │
+│  │  • update_memory — persist learnings          │   │
+│  │  • manage_projects — project CRUD             │   │
+│  │  • pack_repo — RepoMix integration            │   │
+│  │  • query_data — Athena integration            │   │
+│  └───────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────┘
          │
          ▼ (v2.1)
 ┌──────────────────────┐    ┌───────────────┐
@@ -57,11 +60,22 @@ Codifier is a **glue layer** that connects best-in-class tools to the org's uniq
 └──────────────────────┘    └───────────────┘
 ```
 
+### Key Architectural Insight: Separate Data Plane from Control Plane
+
+The original v2.0 plan bundled workflow orchestration (PlaybookRunner, session state, step progression) into the MCP server. This created a poor user experience — each step required a full MCP round-trip (`advance_step`), burning tokens and adding latency for what should be fluid conversation.
+
+The revised architecture separates concerns:
+
+- **Data Plane (MCP Server)**: 5 tools for discrete data operations — fetch, store, pack, query, manage. Stateless, fast, purpose-built.
+- **Control Plane (Skills)**: Model-agnostic instruction files that the user's LLM reads and follows conversationally. The LLM is the state machine. No server-side session management, no stepping protocol.
+
+This follows the pattern established by Notion's design team (Brian Lovin) with Claude Code: Skills as reusable instruction sets, slash commands as workflow entry points, and the principle of "when the AI asks you to do something, teach it to do that itself."
+
 ---
 
 ## MVP Scope (v2.0)
 
-The MVP proves all four differentiators with the minimum build surface: shared KB, org data persistence, friction reduction via Playbooks, and the remote MCP foundation that enables future multi-surface delivery.
+The MVP proves all four differentiators with the minimum build surface: shared KB, org data persistence, codified workflow friction reduction via Skills, and the remote MCP foundation that enables future multi-surface delivery.
 
 ### Core 1: Remote MCP Server
 
@@ -106,246 +120,179 @@ The institutional memory layer. All data persists in Supabase (Postgres + pgvect
 | `projects` | `id`, `name`, `org`, `metadata` (JSONB), `created_at` | Top-level container. All other entities scoped to a project. |
 | `repositories` | `id`, `project_id` (FK), `version_label`, `repomix_output` (text), `file_tree` (JSONB), `metadata` (JSONB), `created_at` | Versioned repo snapshots via RepoMix. A project links to N repos (e.g., "legacy", "revamped"). |
 | `memories` | `id`, `project_id` (FK), `memory_type` (enum: rule, doc, api_contract, learning, research_finding), `title`, `content` (text), `tags` (text[]), `confidence` (float), `usage_count` (int), `embedding` (vector), `source_role` (text), `created_at`, `updated_at` | Rules, docs, API contracts, learnings, research findings. Core knowledge entities. `source_role` tracks which role created the memory. |
-| `sessions` | `id`, `project_id` (FK), `playbook_id`, `current_step`, `collected_data` (JSONB), `status` (enum: active, completed, abandoned), `created_at`, `updated_at` | Playbook execution state. |
+
+Note: The `sessions` table from the original plan is **removed**. Workflow state lives in the LLM's conversation context, not the server.
 
 **Retrieval (MVP):** Exact-match filtering on `project_id`, `memory_type`, and `tags`. The `embedding` column is populated on write (using an embedding model at ingest time) but vector similarity search is deferred to v2.1. This keeps retrieval simple and predictable while the KB is small, and the embeddings are ready when the data volume justifies semantic search.
 
 **Row Level Security:** Supabase RLS policies scope all queries by project. API key maps to allowed project(s) via a lightweight `api_keys` table.
 
-### Core 3: Playbook Engine
+### Core 3: Skills + Slash Commands (Playbooks-as-Skills)
 
-Playbooks are linear, multi-step guided sequences organized by **user role**. This taxonomy aligns with the org's internal processes — each role has workflows specific to its function, with some overlapping steps across roles.
+Playbooks are delivered as **Agent Skills** — model-agnostic markdown instruction files that any LLM client can consume. Slash commands are the activation pattern. The LLM follows the Skill instructions conversationally, calling Codifier MCP tools only for data operations.
 
-**Role-based playbook taxonomy:**
+**Why Skills instead of a server-side PlaybookRunner:**
 
-| Role | Purpose | MVP Playbooks |
+| Concern | Server-side PlaybookRunner (original) | Skills (revised) |
+|---|---|---|
+| Step progression | `advance_step` MCP calls — token-burning round-trips | Natural conversation — LLM manages flow |
+| Session state | `sessions` table in Supabase | LLM's context window |
+| Generator prompts | Server-side prompt templates | Skill `templates/` directory, read by LLM locally |
+| Activation | `run_playbook` tool call | Slash command or natural language |
+| Model compatibility | Tied to MCP client implementation | Model-agnostic — Claude, GPT, Gemini, OpenCode |
+| Distribution | Bundled with MCP server deployment | Files in a directory — git, npm, or manual copy |
+| User experience | Choppy step-by-step with latency between steps | Fluid conversational flow with MCP calls only for data ops |
+
+**Skill structure:**
+
+Each Playbook Skill is a directory containing a `SKILL.md` (natural language instructions for the LLM) and optional `templates/` (prompt templates for artifact generation):
+
+```
+.codifier/
+├── skills/
+│   ├── initialize-project/
+│   │   ├── SKILL.md              # Full workflow instructions
+│   │   └── templates/
+│   │       ├── rules-prompt.md
+│   │       ├── evals-prompt.md
+│   │       ├── requirements-prompt.md
+│   │       └── roadmap-prompt.md
+│   ├── brownfield-onboard/
+│   │   └── SKILL.md
+│   ├── research-analyze/
+│   │   ├── SKILL.md
+│   │   └── templates/
+│   │       ├── query-generation-prompt.md
+│   │       └── synthesis-prompt.md
+│   └── shared/
+│       └── codifier-tools.md     # Reference: available MCP tools, params, usage
+├── commands/
+│   ├── init.md                   # Slash command → invokes initialize-project skill
+│   ├── onboard.md                # Slash command → invokes brownfield-onboard skill
+│   └── research.md               # Slash command → invokes research-analyze skill
+└── config.json                   # MCP server URL, project defaults
+```
+
+**SKILL.md anatomy:**
+
+A Skill file contains:
+- **Purpose**: What the workflow achieves
+- **Prerequisites**: What must be available (MCP connection, repo URLs, etc.)
+- **Workflow steps**: Natural language instructions telling the LLM what to collect from the user, when to call MCP tools, and how to generate/present artifacts
+- **Context assembly**: How to combine collected inputs for artifact generation
+- **Error handling**: What to do when tools fail or inputs are missing
+- **Tool reference**: Pointer to shared/codifier-tools.md
+
+The LLM reads the SKILL.md and follows it conversationally. It asks the user questions, processes responses, calls MCP tools when needed, generates artifacts using the prompt templates, and persists results — all within a natural conversation flow.
+
+**Slash commands:**
+
+Slash commands are thin activation wrappers that map to Skills. For Claude Code, these live in `.claude/commands/`. For other clients, they map to the equivalent instruction entry point.
+
+Example `commands/init.md`:
+```markdown
+Read and follow the instructions in .codifier/skills/initialize-project/SKILL.md
+
+Use the Codifier MCP tools as directed by the skill. The user wants to initialize
+a new project in the shared knowledge base.
+```
+
+**Friction reduction levels:**
+
+Skills support a progression of automation that reduces friction at each level:
+
+1. **Guide** — The Skill tells the LLM what to ask the user and how to process their responses. Every Skill does this as a baseline.
+
+2. **Act** — The Skill instructs the LLM to call MCP tools directly on behalf of the user, rather than asking them to do it manually. Example: "call `pack_repo` with the URL the user provided" rather than "ask the user to run pack_repo."
+
+3. **Automate** — Skills can include detection logic and executable scripts for recurring patterns. Example: auto-detect a `.sow` file in the project root and load it without asking, or scan `package.json` to infer the tech stack before generating rules.
+
+4. **Chain** — Slash commands compose Skills. `/init` might invoke initialize-project, then automatically chain to brownfield-onboard if repos were provided. The LLM handles the transition naturally.
+
+**Role-based Skill taxonomy (MVP):**
+
+| Role | Purpose | MVP Skills |
 |---|---|---|
 | **Developer** | Set up projects, onboard codebases, produce artifacts for AI-assisted development | Initialize Project, Brownfield Onboard |
 | **Researcher** | Connect to data sources, retrieve and analyze data, synthesize findings | Research & Analyze |
-| *Architect* | *(v2.1)* Evaluate technologies, model systems, produce architecture decision records | — |
+| *Architect* | *(v2.1)* Technology evaluation, system modeling, ADRs | — |
 | *Strategist* | *(v2.1)* Roadmap planning, competitive analysis, OKR alignment | — |
 
-The PlaybookRunner is a lightweight state machine — no conditional branching, no loops for MVP. Steps execute in order.
+**Context assembly for generators:**
 
-**Step action types:**
-
-| Action | Behavior |
-|---|---|
-| `store` | Prompt user for input, store value in `sessions.collected_data` at the specified `target` key. Accepts text, text-list, or 'skip' to store null. |
-| `skill-invoke` | Call an external tool (e.g., RepoMix, Athena) with params from session data. Store result. If `skip_if_empty` is set and the referenced session value is null/empty/'skip', the step is skipped automatically. |
-| `generate` | Return a structured prompt + accumulated context to the client. Client's LLM generates the artifact. User reviews and confirms ("proceed", "yes", etc.) to accept. Accepted artifact is returned as tool response content for the client to save locally, and a copy is persisted in the `memories` table. |
-| `data-query` | Execute a query against a connected data source (Athena for MVP). Returns results as structured content stored in session. |
-
-**Generate action flow (detailed):**
-
-```
-1. PlaybookRunner reaches a `generate` step
-2. Codifier assembles: system prompt (generator template) + context (session data, repo snapshots, prior memories)
-3. Returns to client as tool response: { type: "generate_request", prompt: "...", context: "...", output_filename: "Rules.md" }
-4. Client's LLM generates the artifact from the prompt + context
-5. User reviews output, confirms or edits
-6. Client calls `advance_step` with the final artifact content
-7. Codifier persists a copy in `memories` (memory_type based on artifact) and returns next step
-```
-
-This keeps Codifier stateless with respect to LLM calls. No API keys, no model selection, no rate limits on the server. The client's existing LLM does the generation.
-
-**Playbook definition format (declarative YAML):**
-
-```yaml
-id: initialize-project
-name: Initialize Project
-description: >
-  Set up a new project with knowledge base, rules, evals, requirements, and roadmap.
-  Supports both greenfield (no existing code) and brownfield (existing codebase) projects.
-  Context is assembled from any combination of: project description, SOW/documentation, and repo analysis.
-steps:
-  - id: name-project
-    prompt: "What is the name of this project?"
-    input_type: text
-    action: store
-    target: project.name
-
-  - id: describe-project
-    prompt: >
-      Describe the project's purpose, goals, and scope. Include:
-      - What is being built or changed
-      - Key business objectives
-      - Known constraints or requirements
-      - For brownfield: what aspects of the existing system are being revamped
-    input_type: text
-    action: store
-    target: project.description
-
-  - id: provide-sow
-    prompt: >
-      Provide a Statement of Work (SOW) or other project documentation by pasting the content 
-      directly (markdown or plain text), or 'skip' if none. This can be an SOW, PRD, technical 
-      brief, or any document that defines project scope and requirements. This context will guide 
-      artifact generation for both greenfield and brownfield projects.
-      
-      Note: For MVP, paste document content directly. Fetching from URLs (Confluence, SharePoint, 
-      Google Docs) requires authenticated connectors available in v2.1.
-    input_type: text
-    action: store
-    target: session.sow_content
-
-  - id: provide-repo-urls
-    prompt: >
-      Provide repository URLs to analyze (comma-separated, or 'skip' for greenfield projects).
-      For brownfield projects, this can be the legacy repo being revamped — the SOW above will 
-      guide how rules are generated to reflect the target state, not just the current codebase.
-    input_type: text-list
-    action: store
-    target: session.source_urls
-
-  - id: fetch-and-condense
-    prompt: "Fetching and condensing repositories..."
-    action: skill-invoke
-    skill: repomix
-    params_from: session.source_urls
-    skip_if_empty: session.source_urls
-    target: session.repo_snapshot
-
-  - id: generate-rules
-    prompt: "Generating project rules based on available context. Review and confirm."
-    action: generate
-    generator: rules-from-context
-    output: Rules.md
-    # Generator receives: project.description + session.sow_content + session.repo_snapshot (if any)
-    # Greenfield: rules derived from SOW + description (coding standards, architecture patterns, constraints)
-    # Brownfield: rules derived from repo analysis + SOW (SOW guides target-state rules, repo informs current-state awareness)
-
-  - id: generate-evals
-    prompt: "Generating evaluation criteria based on rules. Review and confirm."
-    action: generate
-    generator: evals-from-rules
-    output: Evals.md
-
-  - id: define-requirements
-    prompt: "Generating requirements based on project context. Review, edit, and confirm."
-    action: generate
-    generator: requirements-from-context
-    output: Requirements.md
-
-  - id: generate-roadmap
-    prompt: "Generating phased roadmap from requirements. Review, edit, and confirm."
-    action: generate
-    generator: roadmap-from-requirements
-    output: Roadmap.md
-```
-
-**Context assembly for generators:** Each `generate` step receives the full accumulated session context. The generators are smart about what's available:
+Each Skill's generate steps use prompt templates that receive the full accumulated conversation context. The templates are smart about what's available:
 
 | Scenario | Context available | Generator behavior |
 |---|---|---|
 | **Greenfield + SOW** | description + SOW | Rules derived from SOW constraints, architecture patterns, and standards. Requirements extracted from SOW scope. |
 | **Greenfield, no SOW** | description only | Rules are minimal scaffolding (naming conventions, file structure). Requirements gathered from description. |
-| **Brownfield + SOW** | description + SOW + repo snapshot | Rules reflect *target state* from SOW, with current-state awareness from repo analysis. SOW takes precedence over existing patterns where they conflict (the repo is what's being changed). |
+| **Brownfield + SOW** | description + SOW + repo snapshot | Rules reflect *target state* from SOW, with current-state awareness from repo analysis. SOW takes precedence over existing patterns where they conflict. |
 | **Brownfield, no SOW** | description + repo snapshot | Rules extracted from existing codebase patterns. Requirements inferred from description + repo structure. |
 
-**Starter Playbooks (MVP):**
+### Core 4: CLI Installer (`npx codifier`)
 
-#### Developer Playbooks
+A thin CLI that scaffolds Skills, commands, and MCP configuration into the user's project. Not a runtime — a scaffolder. After installation, the CLI isn't needed; the user's LLM client takes over.
 
-1. **Initialize Project** — name → describe → provide SOW (optional) → provide repos (optional) → fetch/condense → generate Rules.md → Evals.md → Requirements.md → Roadmap.md. Works for greenfield (SOW + description), brownfield (repo + SOW), or any combination.
-2. **Brownfield Onboard** — provide repo URLs → pack via RepoMix → store as versioned snapshots → generate architectural summary
+**Installation flow:**
 
-#### Researcher Playbooks
-
-3. **Research & Analyze** — define objective → select data source (Athena for MVP) → discover schema → formulate queries → retrieve data → synthesize findings → generate research document
-
-```yaml
-id: research-analyze
-name: Research & Analyze
-role: researcher
-description: >
-  Connect to a data source, explore available data, retrieve relevant datasets,
-  and synthesize findings into a research document. MVP supports AWS Athena;
-  v2.1 adds SharePoint, Google Drive, and other sources via SkillManager.
-steps:
-  - id: define-objective
-    prompt: >
-      What is the research objective? Describe what you're trying to learn,
-      the questions you need answered, and how the findings will be used.
-    input_type: text
-    action: store
-    target: session.research_objective
-
-  - id: provide-context
-    prompt: >
-      Provide any background context or supporting documentation (paste content, or 'skip').
-      This could be an SOW, brief, prior research, or domain context that
-      should inform the analysis.
-    input_type: text
-    action: store
-    target: session.research_context
-
-  - id: discover-schema
-    prompt: "Discovering available databases and tables in Athena..."
-    action: data-query
-    source: athena
-    operation: list-tables
-    target: session.available_schema
-
-  - id: select-tables
-    prompt: >
-      Here are the available tables. Which tables are relevant to your
-      research objective? (provide table names, comma-separated)
-    input_type: text-list
-    action: store
-    target: session.selected_tables
-
-  - id: describe-tables
-    prompt: "Retrieving schema details for selected tables..."
-    action: data-query
-    source: athena
-    operation: describe-tables
-    params_from: session.selected_tables
-    target: session.table_schemas
-
-  - id: generate-queries
-    prompt: >
-      Based on the research objective and available table schemas,
-      here are suggested SQL queries. Review, edit, and confirm.
-    action: generate
-    generator: queries-from-objective
-    output: null  # Queries are intermediate, not a final artifact
-
-  - id: execute-queries
-    prompt: "Executing approved queries against Athena..."
-    action: data-query
-    source: athena
-    operation: execute-query
-    params_from: session.approved_queries
-    target: session.query_results
-
-  - id: synthesize-findings
-    prompt: >
-      Generating research synthesis from query results and context.
-      Review, edit, and confirm.
-    action: generate
-    generator: research-synthesis
-    output: ResearchFindings.md
+```bash
+npx codifier init
 ```
 
-**Data-query action flow (Athena):**
+What it does:
+
+1. **Detect environment** — Identifies the LLM client (Claude Code, Cursor, Windsurf, generic) by checking for `.claude/`, `.cursor/`, etc.
+2. **Create `.codifier/` directory** — Copies Skills, commands, and shared references into the project
+3. **Write client-specific config** — For Claude Code: symlinks/copies commands to `.claude/commands/`, updates CLAUDE.md with Skill references. For Cursor: writes to `.cursor/rules/`. For generic: creates standalone `.codifier/` only.
+4. **Configure MCP connection** — Prompts for Codifier MCP server URL + API key, writes `.codifier/config.json` and the client-specific MCP config (e.g., `.mcp.json`)
+5. **Confirm setup** — Lists installed Skills, verifies MCP connectivity with a test call
+
+**Additional CLI commands:**
+
+| Command | Purpose |
+|---|---|
+| `npx codifier init` | Full scaffold — Skills, commands, MCP config |
+| `npx codifier update` | Pull latest Skills from the package registry |
+| `npx codifier add <skill>` | Install an individual Skill (e.g., `npx codifier add research-analyze`) |
+| `npx codifier doctor` | Verify MCP connectivity, check Skill integrity |
+
+**CLI scope (MVP):** The CLI is ~200-300 lines of TypeScript. It's a file copier with environment detection and config writing. No daemon, no background process, no runtime dependency.
 
 ```
-1. PlaybookRunner reaches a `data-query` step
-2. Codifier routes to the Athena integration based on `source: athena`
-3. For `list-tables`: calls Athena MCP's schema discovery tools, returns available databases/tables
-4. For `describe-tables`: calls Athena MCP's table metadata tools for selected tables
-5. For `execute-query`: calls Athena MCP's query execution tool, waits for results
-6. Results stored in session and returned to client for display
-7. Client calls `advance_step` to proceed
+codifier (npm package)
+├── bin/
+│   └── codifier.ts               # CLI entry point
+├── cli/
+│   ├── init.ts                   # Scaffold skills + configure MCP
+│   ├── update.ts                 # Pull latest skills
+│   ├── add.ts                    # Add individual skills
+│   ├── doctor.ts                 # Verify connectivity + integrity
+│   └── detect.ts                 # Environment detection
+├── skills/                       # Bundled skill definitions (copied to user project)
+│   ├── initialize-project/
+│   ├── brownfield-onboard/
+│   ├── research-analyze/
+│   └── shared/
+└── commands/                     # Bundled slash commands
+    ├── init.md
+    ├── onboard.md
+    └── research.md
 ```
 
-### Core 4: Direct Integrations (RepoMix + Athena)
+**Distribution model:**
+
+Skills are files in a directory. This enables multiple distribution paths:
+
+- **Local**: `.codifier/skills/` in the project repo — team-specific, version-controlled alongside the code
+- **Org-wide**: Shared via internal npm package or git submodule — tiger team publishes, everyone consumes
+- **Public**: Open-source Skills for common patterns — community contribution model
+- **npx**: `npx codifier init` for quickstart — always pulls latest from npm
+
+### Core 5: Direct Integrations (RepoMix + Athena)
 
 For MVP, Codifier calls external tools directly — not through the umbrella MCP proxy pattern. Each integration is hardcoded. The SkillManager abstraction is deferred to v2.1.
 
-#### RepoMix (Developer playbooks)
+#### RepoMix (Developer Skills)
 
 The `pack_repo` tool invokes RepoMix's `pack_remote_repository` or `pack_codebase` commands and stores results in the `repositories` table.
 
@@ -373,7 +320,7 @@ fly secrets set GITHUB_TOKEN=ghp_xxxxxxxxxxxxx
 |---|---|
 | Public repo URL (e.g., `https://github.com/org/repo`) | Passed directly to RepoMix `pack_remote_repository` |
 | Private repo URL | Same — RepoMix uses token from env automatically |
-| 'skip' or empty | `skip_if_empty` triggers, step is skipped (greenfield path) |
+| 'skip' or empty | Skill instructs LLM to skip repo analysis (greenfield path) |
 | Non-supported URL format | Error returned to client with supported platforms listed |
 
 **MVP input scope summary:**
@@ -381,13 +328,13 @@ fly secrets set GITHUB_TOKEN=ghp_xxxxxxxxxxxxx
 | Input | Source | MVP approach | v2.1 approach |
 |---|---|---|---|
 | Repo code | GitHub/GitLab/Bitbucket URLs | RepoMix with env tokens | Same, plus Azure DevOps |
-| SOW / project docs | User pastes content directly | Stored as session data | Fetched from Confluence/SharePoint/GDrive via authenticated connectors (SkillManager) |
+| SOW / project docs | User pastes content directly | LLM holds in conversation context | Fetched from Confluence/SharePoint/GDrive via authenticated connectors (SkillManager) |
 | Analytics / research data | AWS Athena | Direct Athena MCP integration with `query_data` tool | Same, plus SharePoint and Google Drive via SkillManager |
 | Confluence/SharePoint pages | Not supported in MVP | User copies and pastes content | SkillManager with Confluence MCP, SharePoint MCP |
 
 **Deployment prerequisite:** For demos using org private repos, the Fly.io instance must have `GITHUB_TOKEN` (or equivalent) configured as a secret before the MVP demo.
 
-#### AWS Athena MCP (Researcher playbooks)
+#### AWS Athena MCP (Researcher Skills)
 
 The `query_data` tool routes to the AWS Athena MCP server (ColeMurray/aws-athena-mcp) for schema discovery and query execution. This is a hardcoded integration — same pattern as RepoMix.
 
@@ -409,15 +356,15 @@ The `query_data` tool routes to the AWS Athena MCP server (ColeMurray/aws-athena
 
 | Tool | Description |
 |---|---|
-| `fetch_context` | Retrieve memories filtered by `project_id`, `memory_type`, and/or `tags`. Returns matching memories as structured content. |
+| `fetch_context` | Retrieve memories filtered by `project_id`, `memory_type`, `tags`, and/or free-text `query`. Returns matching memories as structured content. |
 | `update_memory` | Create or update a memory (rule, doc, contract, learning, research finding) within the current project scope. |
-| `run_playbook` | Start a Playbook by ID. Creates a session, returns the first step. Playbooks are role-specific (developer, researcher). |
-| `advance_step` | Submit input for the current step. For `generate` steps, accepts the confirmed artifact content. Returns next step or completion status. |
 | `manage_projects` | Create, list, switch active project. All subsequent tool calls scoped to the active project. |
-| `pack_repo` | Condense a local or remote repo via RepoMix. Store result as a versioned repository snapshot in the active project. *(Developer playbooks)* |
-| `query_data` | Execute queries against connected data sources (Athena for MVP). Supports schema discovery (`list-tables`, `describe-tables`) and query execution. *(Researcher playbooks)* |
+| `pack_repo` | Condense a local or remote repo via RepoMix. Store result as a versioned repository snapshot in the active project. *(Developer Skills)* |
+| `query_data` | Execute queries against connected data sources (Athena for MVP). Supports schema discovery (`list-tables`, `describe-tables`) and query execution. *(Researcher Skills)* |
 
-**7 tools.** Each one earns its place. `pack_repo` and `query_data` serve different roles but share the same project-scoped KB. No generic dispatchers, no skill management — those come in v2.1.
+**5 tools.** Each one is a discrete data operation. No workflow orchestration, no session management, no stepping protocol. The server is a pure data plane.
+
+**Removed from original plan:** `run_playbook`, `advance_step`. These were server-side workflow orchestration tools replaced by client-side Skills.
 
 ---
 
@@ -432,36 +379,36 @@ The `query_data` tool routes to the AWS Athena MCP server (ColeMurray/aws-athena
 | **1c** | `manage_projects` tool + project scoping | Multi-project support, all queries scoped. |
 | **1d** | RepoMix direct integration + `pack_repo` tool | Repo condensation stores versioned snapshots in `repositories` table. |
 | **1e** | Athena MCP direct integration + `query_data` tool | Schema discovery and query execution against org data warehouse. |
-| **1f** | PlaybookRunner (linear state machine) + `run_playbook` / `advance_step` tools | Playbook engine operational. |
-| **1g** | Developer playbooks: Initialize Project, Brownfield Onboard | End-to-end guided dev workflows producing Rules.md, Evals.md, Requirements.md, Roadmap.md. |
-| **1h** | Researcher playbook: Research & Analyze | End-to-end guided research workflow: objective → schema discovery → query → synthesis → ResearchFindings.md. |
+| **1f** | Skill authoring: Initialize Project + Brownfield Onboard + Research & Analyze | SKILL.md files with prompt templates, tested against MCP tools. |
+| **1g** | CLI installer (`npx codifier init`) | Environment detection, Skill scaffolding, MCP config writing. |
+| **1h** | Slash commands for all 3 Skills | `/init`, `/onboard`, `/research` activate corresponding Skills. |
 | **1i** | Demo + internal dogfooding | Proof-of-concept validated with real projects across both roles. |
 
 **MVP demo scenarios:**
 
-*Developer demo:* A developer connects to Codifier from Cursor, runs the Initialize Project playbook, provides an SOW and optionally a repo URL, and walks through guided steps. At the end, they have Rules.md, Evals.md, Requirements.md, and Roadmap.md saved locally, with all knowledge persisted in the shared KB. Works identically whether the project is greenfield or brownfield.
+*Developer demo:* A developer runs `npx codifier init` in their project, which scaffolds Skills and configures the MCP connection. They type `/init` (or say "initialize my project"). The LLM reads the Skill, conversationally collects project info, calls `pack_repo` and `update_memory` as needed, generates Rules.md / Evals.md / Requirements.md / Roadmap.md inline, and persists everything to the shared KB. The entire flow is a fluid conversation — no `advance_step` latency, no token-burning round-trips for simple questions.
 
-*Researcher demo:* A researcher runs the Research & Analyze playbook, defines a research objective, discovers available Athena tables, reviews schemas, confirms generated SQL queries, and receives ResearchFindings.md synthesizing the results. Findings are persisted in the shared KB — available to developers working on the same project.
+*Researcher demo:* A researcher runs `/research`. The LLM guides them through defining a research objective, discovering Athena schemas (via `query_data`), reviewing and confirming generated SQL queries, executing them, and synthesizing findings into ResearchFindings.md. All conversational, with MCP calls only for actual data operations.
 
-*Cross-role demo:* A researcher's findings (persisted as `memory_type: research_finding`) are retrieved by a developer via `fetch_context` during the Initialize Project playbook, informing the generated Requirements.md. That's the institutional memory story — knowledge flows across roles, not just within them.
+*Cross-role demo:* A researcher's findings (persisted as `memory_type: research_finding`) are retrieved by a developer via `fetch_context` during the Initialize Project workflow, informing the generated Requirements.md. Knowledge flows across roles, not just within them.
 
 ### v2.1 — Extend the foundation
 
 | Feature | Description | Builds on |
 |---|---|---|
 | **Umbrella MCP / SkillManager** | MCPorter-based proxy pattern. Codifier acts as MCP client to child servers (Confluence, GitHub, SharePoint, Jira). Progressive skill disclosure with `manage_skills` and `invoke_skill` tools. | Core 1 (remote server) |
-| **Researcher data sources: SharePoint + Google Drive** | Add SharePoint MCP and Google Drive MCP as data sources selectable in the Research & Analyze playbook. Replaces hardcoded Athena-only with source selection step. | Core 4 (Athena integration pattern) |
-| **Architect playbooks** | Technology evaluation, system modeling, architecture decision records (ADRs). Connects to CMDB, cloud config data sources. | Core 3 (PlaybookRunner) |
-| **Strategist playbooks** | Roadmap planning, competitive analysis, OKR alignment. Produces strategy artifacts. | Core 3 (PlaybookRunner) |
+| **Researcher data sources: SharePoint + Google Drive** | Add SharePoint MCP and Google Drive MCP as data sources. Research & Analyze Skill updated with source selection step. | Core 5 (Athena integration pattern) |
+| **Architect Skills** | Technology evaluation, system modeling, architecture decision records (ADRs). Connects to CMDB, cloud config data sources. | Core 3 (Skills) |
+| **Strategist Skills** | Roadmap planning, competitive analysis, OKR alignment. Produces strategy artifacts. | Core 3 (Skills) |
 | **Semantic search** | Activate vector similarity search on the `embedding` column in `memories`. Hybrid retrieval: exact-match filters + vector ranking. | Core 2 (KB already has embeddings) |
-| **Playbook branching** | Conditional steps (`condition` field), skip logic, and branch paths in YAML. | Core 3 (PlaybookRunner) |
-| **Teams bot** | Bot Framework SDK adapter. Read-only KB queries via Teams messages. Playbook steps rendered as Adaptive Cards. | Core 1 + Core 3 |
-| **Interactive CLI** | Terminal adapter using `inquirer` or `clack` for Playbook execution outside the IDE. | Core 3 (PlaybookRunner) |
+| **Teams bot** | Bot Framework SDK adapter. Read-only KB queries via Teams messages. Skill steps rendered as Adaptive Cards. | Core 1 + Core 3 |
+| **Interactive CLI** | Terminal adapter using `inquirer` or `clack` for Skill execution outside the IDE. Alternative to LLM-driven flow for structured input collection. | Core 3 (Skills) + Core 4 (CLI) |
 | **Compound engineering plugin integration** | Plugin's `/workflows:compound` calls `update_memory`; `/workflows:plan` calls `fetch_context`. Requires validating plugin extensibility. | Core 2 (KB) |
-| **SSO / Entra ID auth** | Replace API key middleware with org SSO. Auth context flows through to connector permissions. | Core 1 (auth middleware) |
+| **SSO / Entra ID auth** | Replace API key middleware with org SSO. WorkOS device auth flow for CLI. Auth context flows through to connector permissions. | Core 1 (auth middleware) |
 | **Memory relationships** | `memory_relationships` table for graph edges between memories (source → target, typed, weighted). Enables "show me everything related to this rule." | Core 2 (KB) |
-| **Artifact versioning** | Track versions of generated artifacts (Roadmap.md v1, v2, etc.) with diff history. | Core 3 (generate action) |
-| **GSD integration patterns** | Codifier artifacts (Roadmap.md, Requirements.md) formatted for direct use in GSD's `.planning/` directory. | Core 3 (Playbooks) |
+| **Artifact versioning** | Track versions of generated artifacts (Roadmap.md v1, v2, etc.) with diff history. | Core 3 (Skills) |
+| **GSD integration patterns** | Codifier artifacts (Roadmap.md, Requirements.md) formatted for direct use in GSD's `.planning/` directory. | Core 3 (Skills) |
+| **Skill marketplace / registry** | Central registry for discovering and installing community and org Skills. `npx codifier add <skill>` pulls from registry. | Core 4 (CLI) |
 
 ---
 
@@ -476,8 +423,9 @@ The `query_data` tool routes to the AWS Athena MCP server (ColeMurray/aws-athena
 | MCP client-side protocol handling | Boilerplate, already abstracted | MCPorter (v2.1) |
 | Skill definition format | Open standard exists | Agent Skills spec |
 | General-purpose AI coding assistant | Commoditized | Claude Code, Cursor, etc. |
-| Data warehouse query engine | Already an MCP server with SQL injection protection and async query support | AWS Athena MCP (ColeMurray/aws-athena-mcp) |
+| Data warehouse query engine | Already an MCP server with SQL injection protection | AWS Athena MCP (ColeMurray/aws-athena-mcp) |
 | Server-side LLM orchestration | Adds complexity, API key management, model coupling | Client's LLM generates artifacts; Codifier provides context |
+| Server-side workflow state machine | Poor UX (latency, token waste), unnecessary server complexity | Client-side Skills — LLM is the state machine |
 
 ---
 
@@ -486,34 +434,37 @@ The `query_data` tool routes to the AWS Athena MCP server (ColeMurray/aws-athena
 | Decision | Choice | Rationale |
 |---|---|---|
 | Data backend | Supabase + pgvector | No third-party data review needed. `IDataStore` abstraction preserved. Free tier sufficient for MVP. |
-| LLM generation | Client-side | Codifier returns prompt + context; client's LLM generates. Keeps server stateless re: LLM calls. |
-| Artifact delivery | Return as tool response content | Client saves locally. Codifier persists copy in KB. Simplest path. |
+| LLM generation | Client-side | Codifier returns data; client's LLM generates artifacts guided by Skills. Keeps server stateless re: LLM calls. |
+| Artifact delivery | LLM saves locally + Skill persists to KB via `update_memory` | User gets local files. Org gets shared memory. Both from same flow. |
 | Retrieval (MVP) | Exact-match filtering | `project_id` + `memory_type` + `tags`. Embeddings stored on write but vector search deferred to v2.1. |
-| Playbook complexity (MVP) | Linear step progression | No branching, no loops. Add conditions in v2.1 based on real usage patterns. |
+| Playbook delivery | Agent Skills (model-agnostic markdown) | Skills are read by any LLM client. No server-side state machine. Fluid conversational UX. |
+| Playbook activation | Slash commands | Maps to native client patterns (`.claude/commands/`, `.cursor/rules/`). Zero friction entry point. |
+| Skill distribution | npm package + `npx codifier init` | One command to scaffold. Updates via `npx codifier update`. No runtime dependency. |
 | RepoMix integration (MVP) | Direct call, not via SkillManager | Hardcoded integration. Umbrella MCP proxy deferred to v2.1. |
 | Hosting | Fly.io | Suspend-on-idle, low cost for MVP. |
 | Auth (MVP) | Personal API keys | Entra ID deferred to v2.1 until permissions granted. |
 | MCP topology (MVP) | Single server, no proxy | Proxy/umbrella pattern deferred to v2.1 with SkillManager. |
-| Playbook format | Declarative YAML | Portable, versionable, surface-agnostic. |
-| Playbook taxonomy | Role-specific (developer, researcher for MVP) | Aligns with org structure. Roles share KB but have distinct workflows and data sources. |
 | Data querying (MVP) | AWS Athena MCP (hardcoded) | Org uses Athena for analytics. SharePoint/GDrive deferred to v2.1. |
-| Athena integration (MVP) | Direct call, not via SkillManager | Same pattern as RepoMix. Hardcoded, swapped to SkillManager in v2.1. |
 
 ---
 
 ## Success Metrics (MVP)
 
-**Developer functional proof:** A developer completes the Initialize Project playbook end-to-end and receives 4 artifacts (Rules.md, Evals.md, Requirements.md, Roadmap.md) from a single guided flow.
+**Developer functional proof:** A developer runs `/init`, completes the conversational flow, and receives 4 artifacts (Rules.md, Evals.md, Requirements.md, Roadmap.md) — all saved locally and persisted to the shared KB.
 
-**Researcher functional proof:** A researcher completes the Research & Analyze playbook end-to-end — discovers Athena schemas, executes queries, and receives ResearchFindings.md.
+**Researcher functional proof:** A researcher runs `/research`, completes the conversational flow — discovers Athena schemas, executes queries, and receives ResearchFindings.md.
 
 **Cross-role proof:** A researcher's findings (persisted as `research_finding`) are retrieved by a developer via `fetch_context` on the same project, demonstrating knowledge flowing across roles.
 
 **Persistence proof:** A second user on a different machine calls `fetch_context` and retrieves memories created by the first user.
 
-**Remote access proof:** Codifier is accessible from any MCP client (Cursor, Claude Code) via the remote SSE endpoint without local installation.
+**Remote access proof:** Codifier MCP is accessible from any MCP client (Cursor, Claude Code) via the remote SSE endpoint without local installation.
 
-**Dogfooding:** The Codifier team uses Codifier to manage Codifier's own project knowledge base (eat your own cooking).
+**Installation proof:** `npx codifier init` scaffolds Skills, commands, and MCP config in under 30 seconds with zero errors.
+
+**UX proof:** The conversational Skill flow completes with ≤5 MCP tool calls (vs. 8-10 `advance_step` calls in the original design). User never waits for "next step" — the LLM drives the conversation fluidly.
+
+**Dogfooding:** The Codifier team uses Codifier to manage Codifier's own project knowledge base.
 
 ---
 
@@ -529,7 +480,9 @@ The `query_data` tool routes to the AWS Athena MCP server (ColeMurray/aws-athena
 | Repo condensation | RepoMix (direct invocation) |
 | Data querying | AWS Athena MCP — ColeMurray/aws-athena-mcp (direct invocation) |
 | Hosting | Fly.io |
-| Playbook definitions | YAML files (bundled with server, loaded at startup) |
+| CLI | TypeScript, distributed via npm (`npx codifier`) |
+| Skill definitions | Markdown files (model-agnostic Agent Skills) |
+| Slash commands | Markdown files (mapped to client-native patterns) |
 
 **Deployment Requirements (Fly.io Secrets):**
 
@@ -541,10 +494,10 @@ The `query_data` tool routes to the AWS Athena MCP server (ColeMurray/aws-athena
 | `GITHUB_TOKEN` | For private repos | GitHub PAT or App token with repo read access |
 | `GITLAB_TOKEN` | If using GitLab | GitLab PAT with read_repository scope |
 | `EMBEDDING_API_KEY` | Yes | API key for embedding model (e.g., OpenAI) — used at ingest only |
-| `ATHENA_S3_OUTPUT_LOCATION` | For Researcher playbook | S3 path for Athena query results (e.g., `s3://bucket/athena-results/`) |
-| `AWS_REGION` | For Researcher playbook | AWS region for Athena (default: `us-east-1`) |
-| `AWS_ACCESS_KEY_ID` | For Researcher playbook | AWS credentials for Athena access (or use `AWS_PROFILE`) |
-| `AWS_SECRET_ACCESS_KEY` | For Researcher playbook | AWS credentials for Athena access |
+| `ATHENA_S3_OUTPUT_LOCATION` | For Researcher workflow | S3 path for Athena query results (e.g., `s3://bucket/athena-results/`) |
+| `AWS_REGION` | For Researcher workflow | AWS region for Athena (default: `us-east-1`) |
+| `AWS_ACCESS_KEY_ID` | For Researcher workflow | AWS credentials for Athena access (or use `AWS_PROFILE`) |
+| `AWS_SECRET_ACCESS_KEY` | For Researcher workflow | AWS credentials for Athena access |
 
 ---
 
@@ -552,51 +505,80 @@ The `query_data` tool routes to the AWS Athena MCP server (ColeMurray/aws-athena
 
 ```
 codifier/
-├── src/
-│   ├── server.ts                  # SSE + stdio entry points
+├── src/                               # MCP Server
+│   ├── server.ts                      # SSE + stdio entry points
 │   ├── auth/
-│   │   └── apiKeyMiddleware.ts    # API key validation
+│   │   └── apiKeyMiddleware.ts        # API key validation
 │   ├── core/
-│   │   ├── CodifierCore.ts        # Business logic (tool handlers)
-│   │   └── types.ts               # Shared types
+│   │   ├── CodifierCore.ts            # 5 tool handlers (business logic)
+│   │   └── types.ts                   # Shared types
 │   ├── datastore/
-│   │   ├── IDataStore.ts          # Interface (from v1.0)
-│   │   └── SupabaseDataStore.ts   # Supabase implementation
-│   ├── playbooks/
-│   │   ├── PlaybookRunner.ts      # Linear state machine
-│   │   ├── generators/            # Prompt templates for generate steps
-│   │   │   ├── rules-from-context.ts
-│   │   │   ├── evals-from-rules.ts
-│   │   │   ├── requirements-from-context.ts
-│   │   │   ├── roadmap-from-requirements.ts
-│   │   │   ├── queries-from-objective.ts     # Researcher: SQL generation
-│   │   │   └── research-synthesis.ts         # Researcher: findings synthesis
-│   │   └── definitions/           # YAML playbook files
-│   │       ├── developer/
-│   │       │   ├── initialize-project.yaml
-│   │       │   └── brownfield-onboard.yaml
-│   │       └── researcher/
-│   │           └── research-analyze.yaml
+│   │   ├── IDataStore.ts              # Interface (from v1.0)
+│   │   └── SupabaseDataStore.ts       # Supabase implementation
 │   ├── tools/
 │   │   ├── fetchContext.ts
 │   │   ├── updateMemory.ts
-│   │   ├── runPlaybook.ts
-│   │   ├── advanceStep.ts
 │   │   ├── manageProjects.ts
 │   │   ├── packRepo.ts
-│   │   └── queryData.ts           # Athena schema discovery + query execution
+│   │   └── queryData.ts
 │   └── integrations/
-│       ├── repomix.ts             # Direct RepoMix invocation
-│       └── athena.ts              # Direct Athena MCP invocation
+│       ├── repomix.ts                 # Direct RepoMix invocation
+│       └── athena.ts                  # Direct Athena MCP invocation
+├── cli/                               # CLI Installer (npx codifier)
+│   ├── bin/
+│   │   └── codifier.ts               # CLI entry point
+│   ├── init.ts                        # Scaffold skills + configure MCP
+│   ├── update.ts                      # Pull latest skills
+│   ├── add.ts                         # Add individual skills
+│   ├── doctor.ts                      # Verify connectivity + integrity
+│   └── detect.ts                      # Environment detection (Claude Code, Cursor, etc.)
+├── skills/                            # Playbook Skills (model-agnostic, distributed via CLI)
+│   ├── initialize-project/
+│   │   ├── SKILL.md                   # Full workflow instructions for LLM
+│   │   └── templates/
+│   │       ├── rules-prompt.md
+│   │       ├── evals-prompt.md
+│   │       ├── requirements-prompt.md
+│   │       └── roadmap-prompt.md
+│   ├── brownfield-onboard/
+│   │   └── SKILL.md
+│   ├── research-analyze/
+│   │   ├── SKILL.md
+│   │   └── templates/
+│   │       ├── query-generation-prompt.md
+│   │       └── synthesis-prompt.md
+│   └── shared/
+│       └── codifier-tools.md          # Reference: all 5 MCP tools, params, usage patterns
+├── commands/                          # Slash commands (mapped to client-native patterns by CLI)
+│   ├── init.md
+│   ├── onboard.md
+│   └── research.md
 ├── supabase/
 │   └── migrations/
-│       └── 001_initial_schema.sql # Tables, RLS policies, indexes
+│       └── 001_initial_schema.sql     # Tables, RLS policies, indexes (no sessions table)
 ├── fly.toml
 ├── Dockerfile
-├── package.json
+├── package.json                       # Includes both server and CLI as separate entry points
 └── tsconfig.json
 ```
 
+**Key structural changes from original plan:**
+
+| Removed | Reason |
+|---|---|
+| `src/playbooks/PlaybookRunner.ts` | Server-side state machine replaced by client-side Skills |
+| `src/playbooks/generators/` | Prompt templates moved to `skills/*/templates/` |
+| `src/playbooks/definitions/*.yaml` | YAML playbook definitions replaced by SKILL.md files |
+| `src/tools/runPlaybook.ts` | `run_playbook` tool removed |
+| `src/tools/advanceStep.ts` | `advance_step` tool removed |
+| `sessions` table in schema | No server-side session state |
+
+| Added | Reason |
+|---|---|
+| `cli/` | `npx codifier init` installer for Skills + MCP config |
+| `skills/` | Model-agnostic Playbook Skills (SKILL.md + templates) |
+| `commands/` | Slash command definitions (thin wrappers that invoke Skills) |
+
 ---
 
-*v2.0 MVP Plan — February 2026*
+*v2.0 MVP Plan — Revised February 2026*

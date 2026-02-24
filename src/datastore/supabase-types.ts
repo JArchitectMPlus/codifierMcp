@@ -3,7 +3,6 @@
  */
 
 export type MemoryType = 'rule' | 'document' | 'api_contract' | 'learning' | 'research_finding';
-export type SessionStatus = 'active' | 'completed' | 'abandoned';
 
 /** Row type for the projects table */
 export interface ProjectRow {
@@ -44,18 +43,6 @@ export interface RepositoryRow {
   version_label: string | null;
   token_count: number | null;
   created_at: string;
-}
-
-/** Row type for the sessions table */
-export interface SessionRow {
-  id: string;
-  project_id: string;
-  playbook_id: string;
-  current_step: number;
-  collected_data: Record<string, unknown>;
-  status: SessionStatus;
-  created_at: string;
-  updated_at: string;
 }
 
 /** Row type for the api_keys table */

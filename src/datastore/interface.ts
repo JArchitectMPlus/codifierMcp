@@ -7,20 +7,16 @@
 
 import type {
   MemoryType,
-  SessionStatus,
   ProjectRow,
   MemoryRow,
   RepositoryRow,
-  SessionRow,
 } from './supabase-types.js';
 
 export type {
   MemoryType,
-  SessionStatus,
   ProjectRow,
   MemoryRow,
   RepositoryRow,
-  SessionRow,
 };
 
 export interface IDataStore {
@@ -67,19 +63,4 @@ export interface IDataStore {
     version_label?: string;
     token_count?: number;
   }): Promise<RepositoryRow>;
-
-  // Sessions
-  createSession(params: {
-    project_id: string;
-    playbook_id: string;
-  }): Promise<SessionRow>;
-  getSession(id: string): Promise<SessionRow | null>;
-  updateSession(
-    id: string,
-    updates: {
-      current_step?: number;
-      collected_data?: Record<string, unknown>;
-      status?: SessionStatus;
-    }
-  ): Promise<SessionRow>;
 }

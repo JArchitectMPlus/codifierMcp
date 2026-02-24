@@ -11,11 +11,9 @@
 import { IDataStore } from './interface.js';
 import type {
   MemoryType,
-  SessionStatus,
   ProjectRow,
   MemoryRow,
   RepositoryRow,
-  SessionRow,
 } from './supabase-types.js';
 import {
   FetchRulesParams,
@@ -357,34 +355,6 @@ export class AtlassianDataStore implements IDataStore {
   }): Promise<RepositoryRow> {
     throw new DataStoreError(
       'saveRepository is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
-    );
-  }
-
-  async createSession(_params: {
-    project_id: string;
-    playbook_id: string;
-  }): Promise<SessionRow> {
-    throw new DataStoreError(
-      'createSession is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
-    );
-  }
-
-  async getSession(_id: string): Promise<SessionRow | null> {
-    throw new DataStoreError(
-      'getSession is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
-    );
-  }
-
-  async updateSession(
-    _id: string,
-    _updates: {
-      current_step?: number;
-      collected_data?: Record<string, unknown>;
-      status?: SessionStatus;
-    }
-  ): Promise<SessionRow> {
-    throw new DataStoreError(
-      'updateSession is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
     );
   }
 
