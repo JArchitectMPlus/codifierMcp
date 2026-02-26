@@ -8,6 +8,7 @@ import { logger } from '../../utils/logger.js';
 import { McpToolError } from '../../utils/errors.js';
 import type { IDataStore } from '../../datastore/interface.js';
 import { AthenaClient } from '../../integrations/athena.js';
+import { getConfig } from '../../config/env.js';
 
 export const QueryDataTool = {
   name: 'query_data',
@@ -26,6 +27,10 @@ export const QueryDataTool = {
       project_id: {
         type: 'string',
         description: 'Project UUID for session scoping',
+      },
+      database: {
+        type: 'string',
+        description: 'Athena database/catalog name — overrides the ATHENA_DATABASE env var',
       },
       query: {
         type: 'string',
@@ -73,15 +78,16 @@ export async function handleQueryData(
 
     await athena.connect();
 
+    const database = validated.database ?? getConfig().ATHENA_DATABASE;
     let operationResult: unknown;
 
     switch (validated.operation) {
       case 'list-tables':
-        operationResult = await athena.listTables();
+        operationResult = await athena.listTables(database);
         break;
 
       case 'describe-tables':
-        operationResult = await athena.describeTables(validated.table_names!);
+        operationResult = await athena.describeTables(validated.table_names!, database);
         break;
 
       case 'execute-query':

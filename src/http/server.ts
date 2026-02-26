@@ -75,6 +75,32 @@ export async function startHttpServer(
   });
 
   //===========================================================================
+  // OAUTH DISCOVERY ENDPOINTS (unauthenticated — clients probe before connecting)
+  // Required by MCP SDK 1.7+ which follows the 2025-03-26 spec
+  //===========================================================================
+
+  app.get('/.well-known/oauth-authorization-server', (_req, res) => {
+    res.status(200).json({
+      issuer: 'https://codifier-mcp.fly.dev',
+      token_endpoint: 'https://codifier-mcp.fly.dev/token',
+      response_types_supported: ['token'],
+      grant_types_supported: ['urn:ietf:params:oauth:grant-type:token-exchange'],
+    });
+  });
+
+  app.get('/.well-known/oauth-protected-resource', (_req, res) => {
+    res.status(200).json({
+      resource: 'https://codifier-mcp.fly.dev',
+      bearer_methods_supported: ['header'],
+    });
+  });
+
+  // Catch-all for other well-known subpaths (Express 5 requires named wildcard)
+  app.get('/.well-known/*path', (_req, res) => {
+    res.status(404).json({ error: 'not_found' });
+  });
+
+  //===========================================================================
   // STREAMABLE HTTP TRANSPORT (PROTOCOL VERSION 2025-03-26)
   // Modern transport supporting GET/POST/DELETE on single endpoint
   //===========================================================================
@@ -277,7 +303,7 @@ export async function startHttpServer(
 
   // Start listening
   return new Promise((resolve, reject) => {
-    const server = app.listen(config.port, () => {
+    const server = app.listen(config.port, '0.0.0.0', () => {
       logger.info('HTTP server started', {
         port: config.port,
         endpoints: {

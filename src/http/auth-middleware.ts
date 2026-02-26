@@ -17,8 +17,8 @@ export interface AuthConfig {
  */
 export function createAuthMiddleware(config: AuthConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    // Skip authentication for health check endpoint
-    if (req.path === '/health') {
+    // Skip authentication for health check and OAuth discovery endpoints
+    if (req.path === '/health' || req.path.startsWith('/.well-known/') || req.method === 'OPTIONS') {
       next();
       return;
     }
@@ -31,14 +31,7 @@ export function createAuthMiddleware(config: AuthConfig) {
         method: req.method,
         ip: req.ip,
       });
-      res.status(401).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32000,
-          message: 'Unauthorized: Missing Authorization header',
-        },
-        id: null,
-      });
+      res.status(401).json({ error: 'unauthorized', error_description: 'Missing Authorization header' });
       return;
     }
 
@@ -51,14 +44,7 @@ export function createAuthMiddleware(config: AuthConfig) {
         scheme,
         ip: req.ip,
       });
-      res.status(401).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32000,
-          message: 'Unauthorized: Invalid authentication scheme (expected Bearer)',
-        },
-        id: null,
-      });
+      res.status(401).json({ error: 'unauthorized', error_description: 'Invalid authentication scheme (expected Bearer)' });
       return;
     }
 
@@ -68,14 +54,7 @@ export function createAuthMiddleware(config: AuthConfig) {
         method: req.method,
         ip: req.ip,
       });
-      res.status(401).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32000,
-          message: 'Unauthorized: Invalid API token',
-        },
-        id: null,
-      });
+      res.status(401).json({ error: 'unauthorized', error_description: 'Invalid API token' });
       return;
     }
 

@@ -67,24 +67,24 @@ export class AthenaClient {
     }
   }
 
-  async listTables(): Promise<unknown> {
+  async listTables(database: string): Promise<unknown> {
     this.assertConnected();
-    logger.info('Listing Athena tables');
+    logger.info('Listing Athena tables', { database });
 
-    const result = await this.client!.callTool({ name: 'list_tables', arguments: {} });
+    const result = await this.client!.callTool({ name: 'list_tables', arguments: { database } });
     return this.extractAndTruncate(result);
   }
 
-  async describeTables(tableNames: string[]): Promise<unknown> {
+  async describeTables(tableNames: string[], database: string): Promise<unknown> {
     this.assertConnected();
-    logger.info('Describing Athena tables', { tableNames });
+    logger.info('Describing Athena tables', { tableNames, database });
 
     // Server exposes describe_table (singular) — call once per table and merge
     const results: unknown[] = [];
     for (const tableName of tableNames) {
       const result = await this.client!.callTool({
         name: 'describe_table',
-        arguments: { table_name: tableName },
+        arguments: { table_name: tableName, database },
       });
       results.push(this.extractAndTruncate(result));
     }

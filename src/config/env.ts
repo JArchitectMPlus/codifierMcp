@@ -97,6 +97,11 @@ const envSchema = z.object({
     .optional()
     .describe('S3 URI for Athena query output (e.g., s3://my-bucket/athena-results/)'),
 
+  ATHENA_DATABASE: z
+    .string()
+    .default('default')
+    .describe('Athena database/catalog name (default: "default")'),
+
   ATHENA_WORKGROUP: z
     .string()
     .default('primary')

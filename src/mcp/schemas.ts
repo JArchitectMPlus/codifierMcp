@@ -191,6 +191,11 @@ export const QueryDataParamsSchema = z.object({
     .min(1, 'project_id is required')
     .describe('Project UUID for session scoping'),
 
+  database: z
+    .string()
+    .optional()
+    .describe('Athena database/catalog name — overrides the ATHENA_DATABASE env var'),
+
   query: z
     .string()
     .optional()

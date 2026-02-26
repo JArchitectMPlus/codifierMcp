@@ -198,6 +198,7 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=xxxx
 AWS_SECRET_ACCESS_KEY=xxxx
 ATHENA_S3_OUTPUT_LOCATION=s3://your-bucket/athena-results/
+ATHENA_DATABASE=default
 ATHENA_WORKGROUP=primary
 ```
 
@@ -211,6 +212,7 @@ ATHENA_WORKGROUP=primary
 | `API_AUTH_TOKEN` | When `http` | Bearer token for authentication |
 | `GITHUB_TOKEN` | For private repos | GitHub PAT with repo read access |
 | `AWS_*` / `ATHENA_*` | For Research & Analyze | AWS credentials and Athena config |
+| `ATHENA_DATABASE` | No | Athena database/catalog name (default: `"default"`); overridable per `query_data` call |
 
 ### MCP Client Configuration
 
@@ -263,7 +265,7 @@ Codifier exposes 5 tools via the MCP protocol:
 | `update_memory` | Create or update a memory within the active project scope |
 | `manage_projects` | Create, list, or switch the active project; all subsequent calls are scoped to it |
 | `pack_repo` | Condense a local or remote repository via RepoMix and store it as a versioned snapshot in the `repositories` table |
-| `query_data` | Execute operations against Athena: `list-tables` (schema discovery), `describe-tables` (column metadata), `execute-query` (SELECT only) |
+| `query_data` | Execute operations against Athena: `list-tables` (schema discovery), `describe-tables` (column metadata), `execute-query` (SELECT only). Accepts optional `database` parameter to override the `ATHENA_DATABASE` env var per call. |
 
 ### Memory Types
 
@@ -340,18 +342,23 @@ node dist/index.js
 | Endpoint | Methods | Auth | Description |
 |----------|---------|------|-------------|
 | `/health` | GET | No | Health check — returns `{"status":"ok"}` |
+| `/.well-known/oauth-authorization-server` | GET | No | OAuth authorization server metadata (MCP SDK 1.7+ discovery) |
+| `/.well-known/oauth-protected-resource` | GET | No | OAuth protected resource metadata |
 | `/mcp` | POST, GET, DELETE | Yes | StreamableHTTP transport (MCP protocol 2025-03-26) |
 | `/sse` | GET | Yes | SSE transport for legacy clients |
 | `/messages` | POST | Yes | SSE message endpoint |
 
 ### Authentication
 
-All endpoints except `/health` require:
+All endpoints except `/health`, `/.well-known/*`, and `OPTIONS` preflight requests require:
 ```
 Authorization: Bearer <API_AUTH_TOKEN>
 ```
 
-Requests without a valid token receive a `401` response.
+Requests without a valid token receive a `401` response with an OAuth-standard error body:
+```json
+{ "error": "unauthorized", "error_description": "..." }
+```
 
 ---
 
@@ -470,24 +477,11 @@ The original v2.0 design used a server-side `PlaybookRunner` state machine with 
 
 1. **Eliminating round-trips**: Each playbook step required an MCP call. Skills let the LLM manage workflow state in its context window — zero extra tool calls for step transitions.
 2. **Model agnosticism**: Skill markdown files work with any LLM client. The YAML playbook format tied generation to Codifier's server-side prompt assembly.
-3. **Simplified server**: 5 stateless tools are easier to reason about, test, and scale. The Fly.io machine can now suspend on idle.
+3. **Simplified server**: 5 stateless tools are easier to reason about, test, and scale. The Fly.io deployment runs always-on (`min_machines_running = 1`, `auto_stop_machines = false`) — no cold-start delay for clients.
 
 ---
 
 ## Roadmap
-
-### v2.0 MVP (current)
-
-- [x] Remote SSE server + auth middleware + Fly.io deployment
-- [x] Supabase schema (4 tables) + RLS + `SupabaseDataStore`
-- [x] `manage_projects` tool + project scoping
-- [x] RepoMix direct integration + `pack_repo` tool
-- [x] Athena MCP sidecar + `query_data` tool
-- [x] Agent Skills (client-side): Initialize Project, Brownfield Onboard, Research & Analyze
-- [x] Slash commands: `/init`, `/onboard`, `/research`
-- [x] CLI installer: `npx codifier init` (init, update, add, doctor)
-- [x] Migration 002: sessions/insights tables dropped
-- [ ] End-to-end validation demos (developer, researcher, cross-role, remote persistence)
 
 ### v2.1
 

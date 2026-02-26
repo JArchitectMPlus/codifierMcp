@@ -27,7 +27,7 @@ The compiled output is placed in `dist/` with `dist/index.js` as the main entry 
 **Layer 1: Remote MCP Server (5 stateless tools)**
 - SSE/StreamableHTTP transport via Express; stdio fallback for local clients
 - Bearer token auth middleware (swap to Entra ID in v2.1)
-- Hosted on Fly.io; suspends on idle (`min_machines_running = 0`, `auto_stop_machines = "suspend"`) — no server-side session state
+- Hosted on Fly.io; always-on in primary region (`min_machines_running = 1`, `auto_stop_machines = false`) — no server-side session state, no cold-start delay
 
 **Layer 2: Shared Knowledge Base (Supabase + pgvector)**
 - All entities scoped to a project via `project_id`

@@ -53,7 +53,7 @@ async function main(): Promise<void> {
       logger.info('CodifierMcp server is ready (HTTP transport)');
     }
 
-    logger.info('Tools available: fetch_context, update_memory');
+    logger.info('Tools available: fetch_context, update_memory, manage_projects, pack_repo, query_data');
 
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
