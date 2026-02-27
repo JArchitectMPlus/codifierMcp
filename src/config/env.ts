@@ -99,8 +99,8 @@ const envSchema = z.object({
 
   ATHENA_DATABASE: z
     .string()
-    .default('default')
-    .describe('Athena database/catalog name (default: "default")'),
+    .default('dev_stage_mfour')
+    .describe('Athena database/catalog name (default: "dev_stage_mfour")'),
 
   ATHENA_WORKGROUP: z
     .string()
