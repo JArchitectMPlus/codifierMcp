@@ -25,9 +25,10 @@ The compiled output is placed in `dist/` with `dist/index.js` as the main entry 
 ### Three-Layer Architecture (v2.0)
 
 **Layer 1: Remote MCP Server (5 stateless tools)**
-- SSE/StreamableHTTP transport via Express; stdio fallback for local clients
+- StreamableHTTP (`/mcp`, POST-only, stateless) as primary; SSE (`/sse`) for legacy clients; stdio for local dev
+- `/mcp` creates a fresh `Server` + `StreamableHTTPServerTransport` per request (`sessionIdGenerator: undefined`) — no session registry, no restart-induced hangs
 - Bearer token auth middleware (swap to Entra ID in v2.1)
-- Hosted on Fly.io; always-on in primary region (`min_machines_running = 1`, `auto_stop_machines = false`) — no server-side session state, no cold-start delay
+- Hosted on Fly.io; always-on in primary region (`min_machines_running = 1`, `auto_stop_machines = false`)
 
 **Layer 2: Shared Knowledge Base (Supabase + pgvector)**
 - All entities scoped to a project via `project_id`

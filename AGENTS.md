@@ -4,145 +4,167 @@ This file provides guidance to Codex when working with code in this repository.
 
 ## Project Overview
 
-**CodifierMcp** is a remotely-installable MCP (Model Context Protocol) server for MemoryBuilder, an institutional memory system for AI-driven development. The system captures and synthesizes organizational knowledge from software development projects, creating a self-reinforcing feedback loop that improves AI-driven development through accumulated institutional knowledge. Deployed at `codifier-mcp.fly.dev` with dual transport support (stdio for local use, HTTP for remote access).
+**CodifierMcp v2.0** is a remotely-installable MCP server for institutional memory in AI-driven development. It captures learnings, decisions, and research findings from any team member and surfaces them to any other member via a shared, searchable knowledge base. Deployed at `codifier-mcp.fly.dev` with dual transport support (stdio for local, SSE/StreamableHTTP for remote).
+
+Codifier's three core capabilities:
+1. **Org-scoped knowledge persistence** — memories from any person, any role, any project in a shared KB
+2. **Authenticated connectors to proprietary data** — RepoMix for code repos, AWS Athena for data warehouses
+3. **Multi-surface access** — IDE via MCP; CLI installer (`npx codifier init`); future Teams bot
 
 ## Build and Development Commands
 
 ```bash
-# Build the TypeScript project
-npm run build
-
-# Install dependencies
-npm install
+npm run build     # Compile TypeScript → dist/
+npm install       # Install dependencies
 ```
 
-The compiled output is placed in the `dist/` directory with `dist/index.js` as the main entry point.
+The compiled output is placed in `dist/` with `dist/index.js` as the main entry point. The CLI compiles to `dist/cli/bin/codifier.js` and is exposed as the `codifier` bin entry.
 
 ## Architecture
 
-### Three-Tier Memory System
+### Three-Layer Architecture (v2.0)
 
-The core architecture is based on three memory layers with different retrieval characteristics:
+**Layer 1: Remote MCP Server (5 stateless tools)**
+- StreamableHTTP (`/mcp`, POST-only, stateless) as primary; SSE (`/sse`) for legacy clients; stdio for local dev
+- `/mcp` creates a fresh `Server` + `StreamableHTTPServerTransport` per request (`sessionIdGenerator: undefined`) — no session registry, no restart-induced hangs
+- Bearer token auth middleware (swap to Entra ID in v2.1)
+- Hosted on Fly.io; always-on in primary region (`min_machines_running = 1`, `auto_stop_machines = false`)
 
-1. **Immediate Context Layer**: Hot memory for active project rules (<400ms retrieval)
-2. **Working Memory Layer**: Recent architectural decisions (1-2s retrieval)
-3. **Long-term Knowledge Base**: Historical patterns with complete version history
+**Layer 2: Shared Knowledge Base (Supabase + pgvector)**
+- All entities scoped to a project via `project_id`
+- Exact-match retrieval for MVP; vector similarity search deferred to v2.1
+- Embeddings stored on write
 
-### Memory Components
+**Layer 3: Agent Skills (client-side)**
+- Markdown instruction files the LLM reads locally — the LLM is the state machine
+- Three Skills: `initialize-project`, `brownfield-onboard`, `research-analyze`
+- Scaffolded into any project via `npx codifier init`; slash commands activate each Skill
+- Skills call the 5 MCP tools for data operations; no server round-trips for workflow state
 
-The system manages three primary types of institutional knowledge:
+**Direct Integrations:**
+- **RepoMix**: programmatic `pack()` API — npm dependency, no subprocess
+- **AWS Athena**: sidecar subprocess via `StdioClientTransport` inside the container
 
-- **Rules System (YAML)**: Project conventions, security patterns, testing standards, business logic patterns, and integration rules. Each rule includes confidence scores, usage metrics, validation history, and relationship mappings.
+## MCP Tool Surface (5 Tools)
 
-- **Documents/Guides (Markdown)**: Technical specifications, ADRs (Architecture Decision Records), runbooks, and best practices.
+| Tool | Description |
+|---|---|
+| `fetch_context` | Retrieve memories filtered by `project_id`, `memory_type`, and/or `tags` |
+| `update_memory` | Create or update a memory (rule, doc, contract, learning, research_finding) |
+| `manage_projects` | Create, list, or switch active project |
+| `pack_repo` | Condense a repo via RepoMix; store as versioned snapshot in `repositories` |
+| `query_data` | Schema discovery and query execution against Athena (`list-tables`, `describe-tables`, `execute-query`) |
 
-- **API Contracts (YAML/OpenAPI)**: Endpoint specifications, schemas, authentication requirements, and version compatibility.
-
-### Knowledge Graph Architecture
-
-Inspired by Supermemory.ai, the system uses:
-- Hybrid graph database with vector indexing for semantic relationships
-- RAG (Retrieval-Augmented Generation) architecture for context-aware retrieval
-- MCP protocol for standardized integration across AI platforms
-
-### Processing Pipeline
-
-The feedback loop follows: Input → Build & Generate (with memory enrichment) → Evaluate & Learn (pattern extraction) → Memory Update (rule refinement and graph updates).
-
-## Data Store Strategy
-
-The project successfully migrated to Supabase while maintaining backward compatibility:
-
-**Current (Default)**: Supabase database with PostgreSQL and pgvector extension. Provides structured storage, semantic search, and relationship mapping. Set via `DATA_STORE=supabase` (default).
-
-**Legacy (Optional)**: Confluence Cloud via Atlassian MCP tools. Still supported for teams with existing Confluence infrastructure. Set via `DATA_STORE=confluence`.
-
-**Why This Works**:
-- Clean abstraction layer (IDataStore interface) enabled seamless migration
-- Factory pattern (`createDataStore()`) switches between implementations
-- Both data stores share the same interface (`getStoreId()`, `fetchRules()`, `saveInsights()`)
-- Teams can choose the storage backend that fits their needs
-
-
-## MCP Architecture
-
-CodifierMcp supports dual transport modes and dual data stores:
-
-```
-MCP Client (Claude Desktop, GitHub Copilot, etc.)
-    ↓ stdio (local) OR HTTP (remote with Bearer auth)
-CodifierMcp Server (this project - business logic)
-    ↓ factory pattern: createDataStore(config)
-    ├── SupabaseDataStore (default)
-    │   ↓ @supabase/supabase-js
-    │   └── Supabase (PostgreSQL + pgvector)
-    │
-    └── AtlassianDataStore (optional)
-        ↓ REST API
-        └── Confluence Cloud (legacy)
-```
-
-**Key Design Principles**:
-- CodifierMcp implements the IDataStore abstraction layer
-- Factory pattern switches between SupabaseDataStore and AtlassianDataStore
-- Dual transport: stdio for local MCP clients, HTTP for remote access
-- Bearer token authentication for HTTP mode
-- Clean separation allows future storage backends
+`run_playbook` and `advance_step` were removed in v2.0. The server registers exactly 5 tools.
 
 ## Data Storage Strategy
 
-**Current (Default)**: Supabase database with PostgreSQL
-- Three core tables: `projects`, `memories`, `insights`
-- pgvector extension for embeddings and semantic search
-- Structured storage for rules, documents, and API contracts
-- Audit trails with `created_at` and `updated_at` timestamps
-- Relationship management via foreign keys
+**Default**: Supabase (PostgreSQL + pgvector)
+
+### Schema (4 Active Tables)
+
+| Table | Key Fields | Purpose |
+|---|---|---|
+| `projects` | id, name, org, metadata | Top-level container; all entities scoped to a project |
+| `repositories` | id, project_id, url, snapshot (text), file_tree (JSONB), version_label | Versioned repo snapshots via RepoMix |
+| `memories` | id, project_id, memory_type (enum), title, content, tags, confidence, usage_count, embedding (vector), source_role | Rules, docs, contracts, learnings, research findings |
+| `api_keys` | id, project_id, key_hash | Maps API keys to allowed projects for RLS |
+
+`sessions` and `insights` tables were dropped in migration `002_v2_schema.sql` (applied 2026-02-24). Do not reference them.
+
+**RLS**: All tables have Row Level Security policies scoping queries by `project_id`.
+
+**Legacy (Optional)**: Confluence Cloud via `AtlassianDataStore` (`DATA_STORE=confluence`).
+
+## File Structure (v2.0)
+
+```
+src/
+├── index.ts                    # Entry point (transport branching)
+├── config/
+│   └── env.ts                  # Zod-validated configuration
+├── http/
+│   ├── server.ts               # Express server (StreamableHTTP + SSE)
+│   └── auth-middleware.ts      # Bearer token authentication
+├── datastore/
+│   ├── interface.ts            # IDataStore abstraction
+│   ├── factory.ts              # createDataStore() factory
+│   ├── supabase-datastore.ts   # Supabase implementation (default)
+│   ├── supabase-client.ts      # Supabase client wrapper
+│   ├── supabase-types.ts       # Supabase type definitions
+│   ├── atlassian-datastore.ts  # Confluence implementation (legacy)
+│   └── confluence-client.ts    # Confluence REST API client
+├── mcp/
+│   ├── server.ts               # Registers exactly 5 tools
+│   ├── schemas.ts              # Zod schemas for tool parameters
+│   └── tools/
+│       ├── fetch-context.ts
+│       ├── update-memory.ts
+│       ├── manage-projects.ts
+│       ├── pack-repo.ts
+│       └── query-data.ts
+├── integrations/
+│   ├── repomix.ts              # RepoMix programmatic API wrapper
+│   └── athena.ts               # Athena MCP sidecar client
+├── services/
+│   ├── context-service.ts      # Rule retrieval with relevance scoring
+│   └── memory-service.ts       # Memory enrichment and storage
+└── utils/
+    ├── logger.ts               # Logging utility (stderr only — MCP uses stdout)
+    └── errors.ts               # Custom error classes
+
+skills/
+├── shared/
+│   └── codifier-tools.md       # Reference: all 5 MCP tools, params, usage
+├── initialize-project/
+│   ├── SKILL.md                # Developer workflow: collect info, pack repo, generate 4 artifacts
+│   └── templates/              # rules-prompt.md, evals-prompt.md, requirements-prompt.md, roadmap-prompt.md
+├── brownfield-onboard/
+│   └── SKILL.md                # Pack existing repos, generate architectural summary
+└── research-analyze/
+    ├── SKILL.md                # Athena schema discovery, SQL generation, synthesis
+    └── templates/              # query-generation-prompt.md, synthesis-prompt.md
+
+commands/
+├── init.md                     # Slash command → initialize-project Skill
+├── onboard.md                  # Slash command → brownfield-onboard Skill
+└── research.md                 # Slash command → research-analyze Skill
+
+cli/
+├── bin/codifier.ts             # CLI entry point (init, update, add, doctor)
+├── detect.ts                   # LLM client detection (.claude/, .cursor/, .windsurf/)
+├── init.ts                     # Scaffold Skills + MCP config into a project
+├── update.ts                   # Pull latest Skills from npm package
+├── add.ts                      # Install a single Skill by name
+└── doctor.ts                   # Verify MCP connectivity + Skill file integrity
+
+supabase/migrations/
+├── 001_initial_schema.sql      # Initial schema
+└── 002_v2_schema.sql           # Drops sessions/insights; confirms v2.0 columns
+```
 
 ## Technology Stack
 
-- **TypeScript** with strict mode enabled
-- **ESM (ECMAScript Modules)** with type: "module" in package.json
-- **Target**: ES2022 with ESNext module system
-- **Zod** for runtime validation of configuration and data schemas
-- **MCP SDK** (@modelcontextprotocol/sdk) for protocol implementation
-- **Express** for HTTP transport with CORS support
-- **Supabase** (@supabase/supabase-js) for database and vector storage (default)
-- **Atlassian MCP** for Confluence integration (optional)
-- **Fly.io** for deployment with suspend-on-idle
+- **TypeScript** — strict mode, ESM (`type: "module"`), target ES2022
+- **Zod** — runtime validation for config and tool parameters
+- **MCP SDK** (`@modelcontextprotocol/sdk`) — protocol + `StdioClientTransport` for Athena sidecar
+- **Express** — HTTP transport (StreamableHTTP + SSE)
+- **Supabase** (`@supabase/supabase-js`) — PostgreSQL + pgvector
+- **RepoMix** (`repomix` npm package) — programmatic `pack()` API
+- **Commander** — CLI argument parsing
+- **Fly.io** — deployment
 
 ## Development Rules and Best Practices
 
 **IMPORTANT**: All development work must follow the rules defined in `docs/rules.yaml`.
 
-The rules file contains institutional knowledge about this project, including:
-- Production code quality standards (R001-R002)
-- MCP protocol best practices (R003)
-- Module system consistency (R004)
-- Clean abstraction patterns (R005)
-- Error handling standards (R006)
-- Configuration management (R007)
-- TypeScript best practices (R008)
-- Module organization (R009)
-- Test-friendly design patterns (R010)
-- Documentation standards (R011)
+**Before writing code**: Review relevant rules in `docs/rules.yaml`
 
-**Before writing code**:
-1. Review relevant rules in `docs/rules.yaml`
-2. Follow the patterns (dos) specified in each rule
-3. Avoid the antipatterns (don'ts) specified in each rule
-4. Reference the examples provided
+**After writing code**: Validate against the rules; add evaluations to `docs/evals.yaml` if introducing new patterns
 
-**After writing code**:
-1. Validate your code against the rules
-2. Add evaluations to `docs/evals.yaml` if introducing new patterns
-3. Update rules if you discover new best practices
-
-**Key Rules Summary**:
-- Write production-ready code with no placeholders (R001)
-- Keep implementations lean and concise (R002)
-- Use stderr for logging in MCP servers (R003)
-- Use ESM with .js extensions in imports (R004)
-- Implement clean abstractions for future migration (R005)
-- Use custom error classes with proper context (R006)
-- Validate configuration with Zod schemas (R007)
-- Enable TypeScript strict mode (R008)
+Key constraints:
+- Log to **stderr only** — MCP protocol uses stdout
+- Never add `run_playbook`, `advance_step`, or session-related code — those are permanently removed
+- All tool implementations live in `src/mcp/tools/`; `src/mcp/server.ts` must register exactly 5 tools
+- Validate all inputs with Zod schemas in `src/mcp/schemas.ts`
+- Use custom error classes from `utils/errors.ts`

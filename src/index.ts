@@ -7,8 +7,9 @@
 
 import { getConfig } from './config/env.js';
 import { logger } from './utils/logger.js';
+import { CodifierError } from './utils/errors.js';
 import { createDataStore } from './datastore/factory.js';
-import { initializeMcpServer, connectStdioTransport } from './mcp/server.js';
+import { createMcpServer, initializeMcpServer, connectStdioTransport } from './mcp/server.js';
 import { startHttpServer } from './http/server.js';
 
 /**
@@ -31,54 +32,69 @@ async function main(): Promise<void> {
     const dataStore = createDataStore(config);
     logger.debug('Data store instance created', { backend: config.DATA_STORE });
 
-    // Initialize MCP server (transport-agnostic)
-    const server = await initializeMcpServer({
-      name: 'codifier-mcp',
-      version: '0.1.0',
-      dataStore,
-    });
-
-    // Connect appropriate transport based on configuration
     if (config.TRANSPORT_MODE === 'stdio') {
-      logger.info('Starting server in stdio mode');
+      // stdio: single long-lived server connected to the process streams
+      const server = await initializeMcpServer({
+        name: 'codifier-mcp',
+        version: '0.1.0',
+        dataStore,
+      });
+
       await connectStdioTransport(server);
       logger.info('CodifierMcp server is ready (stdio transport)');
+
+      process.on('SIGINT', async () => {
+        logger.info('Received SIGINT, shutting down gracefully');
+        try {
+          await server.close();
+          process.exit(0);
+        } catch (error) {
+          logger.error('Error during shutdown', error);
+          process.exit(1);
+        }
+      });
+
+      process.on('SIGTERM', async () => {
+        logger.info('Received SIGTERM, shutting down gracefully');
+        try {
+          await server.close();
+          process.exit(0);
+        } catch (error) {
+          logger.error('Error during shutdown', error);
+          process.exit(1);
+        }
+      });
     } else if (config.TRANSPORT_MODE === 'http') {
-      logger.info('Starting server in HTTP mode');
-      await startHttpServer(server, {
+      // http: stateless — initialize datastore once, create a fresh MCP Server per request
+      await dataStore.initialize();
+      const isHealthy = await dataStore.healthCheck();
+      if (!isHealthy) {
+        throw new CodifierError('Data store health check failed');
+      }
+      logger.info('Data store initialized and healthy');
+
+      const mcpConfig = { name: 'codifier-mcp', version: '0.1.0', dataStore };
+
+      await startHttpServer({
         port: config.HTTP_PORT,
         apiAuthToken: config.API_AUTH_TOKEN!,
         dataStore,
+        createServer: () => createMcpServer(mcpConfig),
       });
-      logger.info('CodifierMcp server is ready (HTTP transport)');
+      logger.info('CodifierMcp server is ready (HTTP stateless transport)');
+
+      process.on('SIGINT', () => {
+        logger.info('Received SIGINT, shutting down');
+        process.exit(0);
+      });
+
+      process.on('SIGTERM', () => {
+        logger.info('Received SIGTERM, shutting down');
+        process.exit(0);
+      });
     }
 
     logger.info('Tools available: fetch_context, update_memory, manage_projects, pack_repo, query_data');
-
-    // Handle graceful shutdown
-    process.on('SIGINT', async () => {
-      logger.info('Received SIGINT, shutting down gracefully');
-      try {
-        await server.close();
-        logger.info('Server closed successfully');
-        process.exit(0);
-      } catch (error) {
-        logger.error('Error during shutdown', error);
-        process.exit(1);
-      }
-    });
-
-    process.on('SIGTERM', async () => {
-      logger.info('Received SIGTERM, shutting down gracefully');
-      try {
-        await server.close();
-        logger.info('Server closed successfully');
-        process.exit(0);
-      } catch (error) {
-        logger.error('Error during shutdown', error);
-        process.exit(1);
-      }
-    });
   } catch (error) {
     logger.error('Fatal error during startup', {
       error: error instanceof Error ? error.message : 'Unknown error',

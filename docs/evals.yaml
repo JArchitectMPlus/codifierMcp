@@ -168,14 +168,69 @@ evaluations:
     reviewer: "Phase 1 Implementation Review"
     notes: "Will be validated in Phase 2 when SupabaseDataStore is implemented"
 
+  - id: "E014"
+    rule_id: "R013"
+    status: "passing"
+    test_case: "Stateless StreamableHTTP transport on POST /mcp"
+    result: "Each POST /mcp creates a fresh Server + StreamableHTTPServerTransport with sessionIdGenerator: undefined. No session registry. No restart-induced hangs."
+    evidence:
+      - "src/http/server.ts uses sessionIdGenerator: undefined on StreamableHTTPServerTransport"
+      - "Per-request mcpServer created via config.createServer() factory"
+      - "res.on('close') cleanup handler registered for transport and server"
+      - "GET /mcp and DELETE /mcp return 405 (no sessions to manage)"
+      - "src/index.ts passes createServer factory; dataStore initialized once at startup"
+      - "Root cause: Fly.io restart cleared in-memory registry; old session IDs returned 400 → client hung"
+    date: "2026-02-28"
+    reviewer: "Stateless Transport Fix"
+
+  - id: "E015"
+    rule_id: "R014"
+    status: "passing"
+    test_case: "No module-level session registry in StreamableHTTP path"
+    result: "The POST /mcp handler creates fresh state per request. No module-level Map, object, or variable accumulates cross-request state in the StreamableHTTP code path."
+    evidence:
+      - "src/http/server.ts: no module-scope session Map for /mcp"
+      - "config.createServer() factory called fresh on every POST /mcp"
+      - "Root cause of the production bug (2026-02-28): `const transports: Record<string, ...>` was module-level, wiped on Fly.io restart"
+      - "Fix: removed registry entirely; transport created and discarded per request"
+      - "SSE registry (sseTransports) is intentionally kept but is connection-scoped and acceptable for that transport"
+    date: "2026-02-28"
+    reviewer: "Stateless Transport Fix"
+
+  - id: "E016"
+    rule_id: "R015"
+    status: "passing"
+    test_case: "POST /mcp is self-contained; no cross-request context required"
+    result: "All five MCP tools (fetch_context, update_memory, manage_projects, pack_repo, query_data) receive full input in the POST body and return a complete response. No tool accumulates state that must persist to a subsequent request."
+    evidence:
+      - "src/mcp/tools/*.ts: all handlers receive args from request payload only"
+      - "dataStore is initialized once at startup (process lifetime), not per request — correct, since Supabase client is stateless"
+      - "transport.close() and mcpServer.close() called on res.on('close') — no leakage between requests"
+      - "tests/http-server.test.js covers stateless POST, missing session header, and stale session header scenarios"
+    date: "2026-02-28"
+    reviewer: "Stateless Transport Fix"
+
+  - id: "E017"
+    rule_id: "R016"
+    status: "passing"
+    test_case: "All durable writes go through SupabaseDataStore, not local disk"
+    result: "Inspection of all tool handlers and the datastore implementation confirms no fs.writeFile/fs.appendFile calls outside of temporary repomix scratch usage."
+    evidence:
+      - "src/datastore/supabase-datastore.ts: all persistence via @supabase/supabase-js client"
+      - "src/integrations/repomix.ts: repomix pack() runs in memory; snapshot string passed to saveRepository() → Supabase"
+      - "No direct fs.writeFileSync or fs.appendFileSync in src/mcp/tools/"
+      - "Environment config read from process.env via Zod (src/config/env.ts); never written to disk"
+    date: "2026-02-28"
+    reviewer: "Stateless Transport Fix"
+
 summary:
-  total_evaluations: 13
-  passing: 11
+  total_evaluations: 17
+  passing: 15
   failing: 0
   needs_validation: 2
-  coverage: "All Phase 1 implementation rules validated successfully"
+  coverage: "All Phase 1 rules validated; stateless transport fix and PaaS resilience rules added (2026-02-28)"
   next_steps:
     - "Validate MCP tool schema patterns when server is implemented"
     - "Validate Supabase migration when Phase 2 begins"
-    - "Add evaluations for integration tests"
+    - "Run tests/http-server.test.js as part of CI to keep E015/E016 continuously validated"
     - "Track rule evolution as new patterns emerge"

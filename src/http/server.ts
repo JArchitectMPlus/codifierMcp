@@ -1,15 +1,13 @@
 /**
  * HTTP server implementation for MCP protocol
- * Supports both StreamableHTTP (modern) and SSE (legacy) transports
+ * Supports both StreamableHTTP (stateless, modern) and SSE (legacy) transports
  */
 
 import express from 'express';
 import cors from 'cors';
-import { randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '../utils/logger.js';
 import { createAuthMiddleware } from './auth-middleware.js';
 import type { IDataStore } from '../datastore/interface.js';
@@ -18,25 +16,16 @@ export interface HttpServerConfig {
   port: number;
   apiAuthToken: string;
   dataStore?: IDataStore;
-}
-
-/**
- * Transport registry for managing MCP transport instances by session ID
- */
-interface TransportRegistry {
-  [sessionId: string]: StreamableHTTPServerTransport | SSEServerTransport;
+  /** Factory called once per POST /mcp request to produce a fresh Server instance */
+  createServer: () => Server;
 }
 
 /**
  * Start the HTTP server with MCP protocol support
  *
- * @param mcpServer - The MCP Server instance to expose over HTTP
- * @param config - HTTP server configuration
+ * @param config - HTTP server configuration including a createServer factory
  */
-export async function startHttpServer(
-  mcpServer: Server,
-  config: HttpServerConfig
-): Promise<void> {
+export async function startHttpServer(config: HttpServerConfig): Promise<void> {
   const app = express();
 
   // Middleware setup
@@ -53,8 +42,8 @@ export async function startHttpServer(
   // Authentication middleware (skips /health endpoint)
   app.use(createAuthMiddleware({ apiAuthToken: config.apiAuthToken }));
 
-  // Transport registry to track sessions
-  const transports: TransportRegistry = {};
+  // SSE session registry (legacy transport only)
+  const sseTransports: Record<string, SSEServerTransport> = {};
 
   // Health check endpoint (unauthenticated)
   app.get('/health', async (_req, res) => {
@@ -101,78 +90,33 @@ export async function startHttpServer(
   });
 
   //===========================================================================
-  // STREAMABLE HTTP TRANSPORT (PROTOCOL VERSION 2025-03-26)
-  // Modern transport supporting GET/POST/DELETE on single endpoint
+  // STREAMABLE HTTP TRANSPORT — STATELESS (PROTOCOL VERSION 2025-03-26)
+  //
+  // Each POST creates a fresh Server + transport. No session registry.
+  // This avoids the "missing session ID" error after Fly.io restarts, where
+  // the in-memory registry was cleared but clients still held old session IDs.
   //===========================================================================
 
-  app.all('/mcp', async (req, res) => {
-    logger.debug('MCP request received', {
-      method: req.method,
-      sessionId: req.headers['mcp-session-id'],
-    });
+  app.post('/mcp', async (req, res) => {
+    logger.debug('MCP request received', { method: 'POST' });
 
     try {
-      const sessionId = req.headers['mcp-session-id'] as string | undefined;
-      let transport: StreamableHTTPServerTransport;
+      const mcpServer = config.createServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // stateless — no session tracking
+      });
 
-      // Check for existing session
-      if (sessionId && transports[sessionId]) {
-        const existingTransport = transports[sessionId];
-
-        if (existingTransport instanceof StreamableHTTPServerTransport) {
-          transport = existingTransport;
-        } else {
-          // Session exists but uses different transport (SSE)
-          logger.warn('Session uses incompatible transport', { sessionId });
-          res.status(400).json({
-            jsonrpc: '2.0',
-            error: {
-              code: -32000,
-              message: 'Bad Request: Session uses a different transport protocol',
-            },
-            id: null,
-          });
-          return;
+      // Clean up when the response stream closes
+      res.on('close', () => {
+        try {
+          transport.close();
+          mcpServer.close();
+        } catch {
+          // Swallow — server may not have fully initialized if connect() failed
         }
-      } else if (
-        !sessionId &&
-        req.method === 'POST' &&
-        isInitializeRequest(req.body)
-      ) {
-        // Create new session for initialization request
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: async (newSessionId: string) => {
-            logger.info('New MCP session initialized', { sessionId: newSessionId });
-            transports[newSessionId] = transport;
-          },
-          onsessionclosed: async (closedSessionId: string) => {
-            logger.info('MCP session closed', { sessionId: closedSessionId });
-            delete transports[closedSessionId];
-          },
-        });
+      });
 
-        await mcpServer.connect(transport);
-        logger.debug('Connected new transport to MCP server');
-      } else {
-        // Invalid request - no session ID for non-initialization request
-        logger.warn('Invalid request: missing session ID', {
-          method: req.method,
-          hasSessionId: !!sessionId,
-          isInitialize: req.method === 'POST' && isInitializeRequest(req.body),
-        });
-        res.status(400).json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32000,
-            message: 'Bad Request: Missing session ID',
-          },
-          id: null,
-        });
-        return;
-      }
-
-      // Handle the request with the transport
+      await mcpServer.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
       logger.error('Error handling MCP request', {
@@ -183,14 +127,28 @@ export async function startHttpServer(
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: '2.0',
-          error: {
-            code: -32603,
-            message: 'Internal server error',
-          },
+          error: { code: -32603, message: 'Internal server error' },
           id: null,
         });
       }
     }
+  });
+
+  // GET and DELETE are not applicable in stateless mode (no sessions to open/close)
+  app.get('/mcp', (_req, res) => {
+    res.status(405).json({
+      jsonrpc: '2.0',
+      error: { code: -32000, message: 'Method Not Allowed: use POST for stateless MCP requests' },
+      id: null,
+    });
+  });
+
+  app.delete('/mcp', (_req, res) => {
+    res.status(405).json({
+      jsonrpc: '2.0',
+      error: { code: -32000, message: 'Method Not Allowed: no sessions in stateless mode' },
+      id: null,
+    });
   });
 
   //===========================================================================
@@ -205,7 +163,7 @@ export async function startHttpServer(
       const transport = new SSEServerTransport('/messages', res);
       const sessionId = transport.sessionId;
 
-      transports[sessionId] = transport;
+      sseTransports[sessionId] = transport;
       logger.info('SSE session created', { sessionId });
 
       // Send a keepalive comment every 30s to prevent Fly.io proxy from
@@ -219,9 +177,10 @@ export async function startHttpServer(
       transport.onclose = () => {
         clearInterval(keepalive);
         logger.info('SSE session closed', { sessionId });
-        delete transports[sessionId];
+        delete sseTransports[sessionId];
       };
 
+      const mcpServer = config.createServer();
       await mcpServer.connect(transport);
       await transport.start();
     } catch (error) {
@@ -233,10 +192,7 @@ export async function startHttpServer(
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: '2.0',
-          error: {
-            code: -32603,
-            message: 'Internal server error',
-          },
+          error: { code: -32603, message: 'Internal server error' },
           id: null,
         });
       }
@@ -253,38 +209,19 @@ export async function startHttpServer(
         logger.warn('SSE message without session ID');
         res.status(400).json({
           jsonrpc: '2.0',
-          error: {
-            code: -32000,
-            message: 'Bad Request: Missing sessionId query parameter',
-          },
+          error: { code: -32000, message: 'Bad Request: Missing sessionId query parameter' },
           id: null,
         });
         return;
       }
 
-      const transport = transports[sessionId];
+      const transport = sseTransports[sessionId];
 
       if (!transport) {
         logger.warn('SSE message for unknown session', { sessionId });
         res.status(404).json({
           jsonrpc: '2.0',
-          error: {
-            code: -32000,
-            message: 'Not Found: Session not found',
-          },
-          id: null,
-        });
-        return;
-      }
-
-      if (!(transport instanceof SSEServerTransport)) {
-        logger.warn('SSE message for incompatible transport', { sessionId });
-        res.status(400).json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32000,
-            message: 'Bad Request: Session uses a different transport protocol',
-          },
+          error: { code: -32000, message: 'Not Found: Session not found' },
           id: null,
         });
         return;
@@ -300,10 +237,7 @@ export async function startHttpServer(
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: '2.0',
-          error: {
-            code: -32603,
-            message: 'Internal server error',
-          },
+          error: { code: -32603, message: 'Internal server error' },
           id: null,
         });
       }
@@ -316,7 +250,7 @@ export async function startHttpServer(
       logger.info('HTTP server started', {
         port: config.port,
         endpoints: {
-          modern: '/mcp',
+          modern: '/mcp (stateless POST)',
           legacy_sse: '/sse',
           legacy_messages: '/messages',
           health: '/health',

@@ -344,7 +344,7 @@ node dist/index.js
 | `/health` | GET | No | Health check — returns `{"status":"ok"}` |
 | `/.well-known/oauth-authorization-server` | GET | No | OAuth authorization server metadata (MCP SDK 1.7+ discovery) |
 | `/.well-known/oauth-protected-resource` | GET | No | OAuth protected resource metadata |
-| `/mcp` | POST, GET, DELETE | Yes | StreamableHTTP transport (MCP protocol 2025-03-26) |
+| `/mcp` | POST | Yes | StreamableHTTP transport — stateless (MCP protocol 2025-03-26); GET/DELETE return 405 |
 | `/sse` | GET | Yes | SSE transport for legacy clients |
 | `/messages` | POST | Yes | SSE message endpoint |
 

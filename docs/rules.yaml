@@ -323,3 +323,100 @@ rules:
       created: "2026-02-24"
       priority: "critical"
       tags: ["architecture", "skills", "stateless", "client-side"]
+
+  - id: "R013"
+    category: "architecture"
+    title: "Stateless StreamableHTTP Transport"
+    description: "The /mcp endpoint uses stateless transport mode (sessionIdGenerator: undefined). A new Server and StreamableHTTPServerTransport instance are created per POST request. No in-memory session registry for StreamableHTTP. This prevents hangs after Fly.io restarts, where the registry was cleared but clients still sent old session IDs."
+    confidence: 1.0
+    patterns:
+      - "Pass sessionIdGenerator: undefined to StreamableHTTPServerTransport"
+      - "Create new Server + transport per POST /mcp via config.createServer() factory"
+      - "Register res.on('close', ...) to clean up transport and server"
+      - "Accept createServer: () => Server factory in HttpServerConfig"
+      - "SSE transport (/sse) may still use a session registry (it is connection-scoped)"
+    antipatterns:
+      - "In-memory session registry for StreamableHTTP (lost on Fly.io restart)"
+      - "Single long-lived MCP Server shared across HTTP requests"
+      - "Requiring Mcp-Session-Id header on /mcp requests"
+      - "GET /mcp or DELETE /mcp handlers (no sessions to open/close in stateless mode)"
+    examples:
+      - "Good: new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })"
+      - "Bad: transports[sessionId] = transport (in-memory registry lost on restart)"
+    metadata:
+      created: "2026-02-28"
+      priority: "critical"
+      tags: ["architecture", "http", "stateless", "fly.io", "mcp", "transport"]
+
+  - id: "R014"
+    category: "architecture"
+    title: "No In-Memory State on PaaS — Restarts Wipe It"
+    description: "PaaS platforms (Fly.io, Heroku, Railway, etc.) restart machines under normal operation: deploys, health-check failures, scale-to-zero wake-ups, and rolling updates all cause a fresh process. Any in-memory structure — Maps, plain objects, module-level variables — is silently cleared on restart. State that must survive a restart must be stored in an external, persistent service (Supabase, Redis, etc.)."
+    confidence: 1.0
+    patterns:
+      - "Store durable state in Supabase (or another external store), never in process memory"
+      - "Treat every request as if the server just cold-started"
+      - "Use stateless patterns: derive context from the request payload, not from remembered prior requests"
+      - "If you genuinely need per-process ephemeral state, document the restart-loss consequence explicitly"
+    antipatterns:
+      - "Module-level Maps or objects used as session/state registries (const sessions: Map<string, ...> = new Map())"
+      - "Caching request-correlated data in a module-scope variable that lives across requests"
+      - "Assuming a long-lived object created at startup will still be reachable on the next request"
+      - "Storing user or session identifiers in process memory without an external fallback"
+    examples:
+      - "Good: Session data written to Supabase row on creation; read from Supabase on each request"
+      - "Bad: const sessionRegistry: Record<string, Transport> = {} — cleared on every Fly.io restart"
+      - "Good: Stateless request handling; all context reconstructed from the incoming payload"
+      - "Bad: if (!sessions[id]) return 400 — silently fails after restart because sessions is empty"
+    metadata:
+      created: "2026-02-28"
+      priority: "critical"
+      tags: ["architecture", "paas", "fly.io", "stateless", "restart-resilience", "in-memory"]
+
+  - id: "R015"
+    category: "architecture"
+    title: "Request-Response MCP Tools Must Be Stateless HTTP"
+    description: "MCP tools in CodifierMcp are synchronous request-response operations (fetch, upsert, query). They do not require a persistent connection or multi-turn session. Using stateful HTTP transport for these tools adds restart sensitivity with no benefit. Use stateless POST-per-request transport (StreamableHTTP with sessionIdGenerator: undefined)."
+    confidence: 1.0
+    patterns:
+      - "POST /mcp is the sole entry point; each call is self-contained"
+      - "All tool inputs arrive in the POST body; no cross-request context is needed"
+      - "Transport and Server instances are created per request and discarded after res close"
+      - "Reserve stateful transports (SSE, WebSocket) only for streaming or subscription use cases"
+    antipatterns:
+      - "Treating request-response tools as if they need a persistent session"
+      - "Sharing a single MCP Server instance across concurrent HTTP requests"
+      - "Using SSE or WebSocket for tools that return a single synchronous result"
+      - "Generating a session ID (sessionIdGenerator: () => uuid()) for tools that do not need it"
+    examples:
+      - "Good: POST /mcp → new Server() + new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }) → handle → close"
+      - "Bad: POST /mcp → sessions[id].transport.handle(req) — stateful, lost on restart"
+    metadata:
+      created: "2026-02-28"
+      priority: "high"
+      tags: ["architecture", "http", "mcp", "stateless", "transport", "request-response"]
+
+  - id: "R016"
+    category: "architecture"
+    title: "Persist Only to Supabase; Never to Local Disk or In-Process"
+    description: "On Fly.io, the local filesystem is ephemeral and not shared between machines. All durable writes — memories, project records, repository snapshots — must go to Supabase. Never write to local files as a caching or persistence strategy. Configuration may be read from environment variables (provided by Fly.io secrets), but must not be written back to disk."
+    confidence: 1.0
+    patterns:
+      - "Write all durable data through IDataStore (SupabaseDataStore)"
+      - "Read configuration from environment variables; never write it back to disk"
+      - "Treat the local filesystem as read-only scratch (e.g., temporary files during repomix packing)"
+      - "Clean up any temporary files written to disk within the same request lifecycle"
+    antipatterns:
+      - "Writing JSON or YAML state files to the local filesystem as a cache"
+      - "Persisting user data to /tmp expecting it to survive across requests or restarts"
+      - "Module-level file-system writes that accumulate state over the process lifetime"
+      - "Forking a subprocess that writes to disk and assuming the file persists"
+    examples:
+      - "Good: upsertMemory() → Supabase INSERT/UPSERT"
+      - "Bad: fs.writeFileSync('./cache.json', JSON.stringify(data)) — lost on restart"
+      - "Good: repomix snapshot written to Supabase repositories table immediately after packing"
+      - "Bad: Saving repomix output to /tmp/repo-snapshot.txt and reading it later"
+    metadata:
+      created: "2026-02-28"
+      priority: "high"
+      tags: ["architecture", "paas", "fly.io", "persistence", "supabase", "filesystem"]
