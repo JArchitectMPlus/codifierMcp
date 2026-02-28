@@ -91,7 +91,7 @@ export async function handleQueryData(
         break;
 
       case 'execute-query':
-        operationResult = await athena.executeQuery(validated.query!);
+        operationResult = await athena.executeQuery(validated.query!, database);
         break;
     }
 

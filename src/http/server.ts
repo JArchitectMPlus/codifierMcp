@@ -208,7 +208,16 @@ export async function startHttpServer(
       transports[sessionId] = transport;
       logger.info('SSE session created', { sessionId });
 
+      // Send a keepalive comment every 30s to prevent Fly.io proxy from
+      // closing idle SSE connections (default idle timeout is ~60s)
+      const keepalive = setInterval(() => {
+        if (!res.writableEnded) {
+          res.write(': keepalive\n\n');
+        }
+      }, 30_000);
+
       transport.onclose = () => {
+        clearInterval(keepalive);
         logger.info('SSE session closed', { sessionId });
         delete transports[sessionId];
       };

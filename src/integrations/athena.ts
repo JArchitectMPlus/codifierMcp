@@ -91,7 +91,7 @@ export class AthenaClient {
     return results.length === 1 ? results[0] : results;
   }
 
-  async executeQuery(query: string): Promise<unknown> {
+  async executeQuery(query: string, database: string): Promise<unknown> {
     this.assertConnected();
 
     // Enforce SELECT-only queries
@@ -101,12 +101,12 @@ export class AthenaClient {
       );
     }
 
-    logger.info('Executing Athena query', { query: query.slice(0, 200) });
+    logger.info('Executing Athena query', { query: query.slice(0, 200), database });
 
     // Server uses run_query → poll get_status → get_result
     const runResult = await this.client!.callTool({
       name: 'run_query',
-      arguments: { query },
+      arguments: { query, database },
     });
 
     const runText = this.extractAndTruncate(runResult);
