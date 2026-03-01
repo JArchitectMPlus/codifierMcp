@@ -289,7 +289,7 @@ After running `npx codifier init`, Skills live in `.codifier/skills/` in your pr
 
 ### Developer Skills
 
-#### Initialize Project (`/init`)
+#### Initialize Project (`/codify`)
 
 For greenfield and brownfield projects. Produces four artifacts persisted to the shared KB.
 
@@ -410,7 +410,7 @@ codifierMcp/
 │       ├── SKILL.md
 │       └── templates/
 ├── commands/
-│   ├── init.md                     # /init slash command
+│   ├── codify.md                   # /codify slash command
 │   ├── onboard.md                  # /onboard slash command
 │   └── research.md                 # /research slash command
 ├── cli/
