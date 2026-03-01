@@ -55,7 +55,9 @@ export async function runInit(): Promise<void> {
   }
 
   // 3. Prompt for server URL and API key
-  const serverUrl = await prompt('Codifier MCP server URL (e.g., https://codifier-mcp.fly.dev): ');
+  const DEFAULT_SERVER_URL = 'https://codifier-mcp.fly.dev';
+  const serverUrlInput = await prompt(`Codifier MCP server URL [${DEFAULT_SERVER_URL}]: `);
+  const serverUrl = serverUrlInput || DEFAULT_SERVER_URL;
   const apiKey = await prompt('Codifier API key: ');
 
   // 4. Write .codifier/config.json
@@ -64,6 +66,11 @@ export async function runInit(): Promise<void> {
   const config = { serverUrl, apiKey, installedAt: new Date().toISOString() };
   writeFileSync(join(configDir, 'config.json'), JSON.stringify(config, null, 2));
   console.log('✓ Config saved to .codifier/config.json');
+
+  // 4b. Create docs/ directory for local artifact copies
+  const docsDir = join(cwd, 'docs');
+  mkdirSync(docsDir, { recursive: true });
+  console.log('✓ Created docs/ for local artifact storage');
 
   // 5. Write MCP config (client-specific format)
   const mcpConfig = buildMcpConfig(serverUrl, apiKey);
@@ -86,10 +93,11 @@ export async function runInit(): Promise<void> {
   // 7. Print summary
   console.log('\n✅ Codifier installed successfully!\n');
   console.log('Available skills:');
-  console.log('  • Initialize Project  →  /init');
+  console.log('  • Initialize Project  →  /codify');
   console.log('  • Brownfield Onboard  →  /onboard');
   console.log('  • Research & Analyze  →  /research');
-  console.log('\nRun /init in your LLM client to start your first project.\n');
+  console.log('  • Artifacts will be saved locally to docs/');
+  console.log('\nRun /codify in your LLM client to start your first project.\n');
 }
 
 function buildMcpConfig(serverUrl: string, apiKey: string): Record<string, unknown> {

@@ -1,18 +1,24 @@
 {
-  "name": "codifierMcp",
-  "version": "0.1.0",
+  "name": "@codifier/cli",
+  "version": "2.0.3",
   "description": "MCP server for institutional memory management",
   "main": "dist/index.js",
   "bin": {
     "codifier": "dist/cli/bin/codifier.js"
   },
   "type": "module",
+  "files": [
+    "dist/cli/",
+    "skills/",
+    "commands/"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc && node dist/index.js",
     "watch": "tsc --watch",
     "start": "node dist/index.js",
-    "test": "node --test tests/http-server.test.js"
+    "test": "node --test tests/http-server.test.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
@@ -30,6 +36,5 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.12.7",
     "typescript": "^5.5.3"
-  },
-  "private": true
+  }
 }

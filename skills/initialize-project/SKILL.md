@@ -99,7 +99,28 @@ Using the prompt template in `templates/roadmap-prompt.md`, generate a phased im
 
 Present Roadmap.md inline and ask for confirmation.
 
-### Step 9 — Persist All Artifacts
+### Step 9 — Write Local Copies
+
+Write each confirmed artifact as a local file in the `docs/` directory at the project root. Create the directory if it does not exist.
+
+| Artifact | Local Path |
+|----------|-----------|
+| Rules | `docs/rules.md` |
+| Evals | `docs/evals.yaml` |
+| Requirements | `docs/requirements.md` |
+| Roadmap | `docs/roadmap.md` |
+
+Write each file with the confirmed artifact content (the same content that will be passed to `update_memory` in the next step).
+
+**Important:**
+- Use YAML format for Evals (the evals-prompt template produces YAML output)
+- Use Markdown for all other artifacts
+- If `docs/` already contains files with the same names, ask the user before overwriting
+- If a write fails, inform the user but continue — remote persistence in the next step will still capture the artifact
+
+Inform the user: "Local copies saved to docs/"
+
+### Step 10 — Persist All Artifacts Remotely
 
 Call `update_memory` four times — once per artifact:
 
@@ -112,11 +133,12 @@ Call `update_memory` four times — once per artifact:
 
 For each call, set `content: { text: "<full artifact markdown>" }` and add relevant `tags` (e.g., `["rules", "standards"]` for Rules.md).
 
-### Step 10 — Summarize
+### Step 11 — Summarize
 
 Tell the user:
 - Project ID (so they can reference it later)
 - Which artifacts were generated and persisted
+- Local copies written to `docs/` (rules.md, evals.yaml, requirements.md, roadmap.md)
 - How many MCP tool calls were made total
 - How to retrieve context in future sessions: `fetch_context` with `{ project_id, memory_type: "document" }`
 

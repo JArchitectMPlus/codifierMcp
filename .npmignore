@@ -1,0 +1,53 @@
+# Server source (not needed by CLI consumers)
+src/
+
+# Compiled server output (only dist/cli/ is included via "files")
+dist/index.js
+dist/config/
+dist/datastore/
+dist/http/
+dist/integrations/
+dist/mcp/
+dist/services/
+dist/utils/
+
+# Supabase migrations and config
+supabase/
+
+# Fly.io deployment config
+fly.toml
+Dockerfile
+.dockerignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Development and CI
+.github/
+scripts/
+tests/
+tsconfig.json
+
+# IDE and editor config
+.idea/
+.vscode/
+.claude/
+
+# Local MCP config
+.mcp.json
+
+# Planning and internal docs
+*.md
+!README.md
+!skills/**/*.md
+!commands/**/*.md
+docs/
+memory/
+
+# Misc
+node_modules/
+.git/
+.gitignore
+package-lock.json

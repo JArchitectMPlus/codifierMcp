@@ -66,7 +66,21 @@ Present the summary to the user and ask: **"Does this accurately describe the sy
 
 Incorporate feedback.
 
-### Step 6 — Persist Architectural Summary
+### Step 6 — Write Local Copies
+
+Write the confirmed architectural summary as a local file in the `docs/` directory at the project root. Create the directory if it does not exist.
+
+| Artifact | Local Path |
+|----------|-----------|
+| Architectural Summary | `docs/architecture.md` |
+
+**Important:**
+- If `docs/architecture.md` already exists, ask the user before overwriting
+- If the write fails, inform the user but continue — remote persistence in the next step will still capture the artifact
+
+Inform the user: "Local copy saved to docs/architecture.md"
+
+### Step 7 — Persist Architectural Summary Remotely
 
 Call `update_memory`:
 ```
@@ -77,11 +91,13 @@ tags: ["architecture", "onboarding", "brownfield"]
 source_role: "developer"
 ```
 
-### Step 7 — Persist Architectural Decisions
+### Step 8 — Persist Architectural Decisions
 
 For any significant architectural decisions uncovered (e.g., "uses event sourcing", "monorepo with Turborepo", "Postgres as primary store"), ask the user which to persist as formal documents.
 
-For each confirmed decision, call `update_memory`:
+For each confirmed decision:
+1. Write a local copy to `docs/adr-<kebab-slug>.md` (convert the decision title to lowercase kebab-case, e.g., "Uses Event Sourcing" → `docs/adr-uses-event-sourcing.md`)
+2. Then call `update_memory`:
 ```
 memory_type: "document"
 title: "ADR: <decision title>"
@@ -90,12 +106,13 @@ tags: ["adr", "architecture"]
 source_role: "developer"
 ```
 
-### Step 8 — Summarize
+### Step 9 — Summarize
 
 Tell the user:
 - Project ID
 - Repositories packed (with IDs and token counts)
 - Memories persisted (IDs and titles)
+- Local copies written to `docs/` (architecture.md, any ADR files)
 - How to retrieve this context in future: `fetch_context` with `{ project_id, tags: ["architecture"] }`
 
 ---
