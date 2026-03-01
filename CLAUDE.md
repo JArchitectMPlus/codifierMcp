@@ -129,7 +129,7 @@ skills/
     └── templates/              # query-generation-prompt.md, synthesis-prompt.md
 
 commands/
-├── init.md                     # Slash command → initialize-project Skill
+├── codify.md                   # Slash command → initialize-project Skill
 ├── onboard.md                  # Slash command → brownfield-onboard Skill
 └── research.md                 # Slash command → research-analyze Skill
 

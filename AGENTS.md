@@ -40,6 +40,9 @@ The compiled output is placed in `dist/` with `dist/index.js` as the main entry 
 - Three Skills: `initialize-project`, `brownfield-onboard`, `research-analyze`
 - Scaffolded into any project via `npx codifier init`; slash commands activate each Skill
 - Skills call the 5 MCP tools for data operations; no server round-trips for workflow state
+- Skills write local copies of generated artifacts to `docs/` **before** remote persistence via `update_memory`
+- `docs/` is created by `npx codifier init`; local files guard the current dev session and serve as offline fallback
+- Remote storage (Supabase) remains the shared source of truth for the team
 
 **Direct Integrations:**
 - **RepoMix**: programmatic `pack()` API — npm dependency, no subprocess
@@ -126,7 +129,7 @@ skills/
     └── templates/              # query-generation-prompt.md, synthesis-prompt.md
 
 commands/
-├── init.md                     # Slash command → initialize-project Skill
+├── codify.md                   # Slash command → initialize-project Skill
 ├── onboard.md                  # Slash command → brownfield-onboard Skill
 └── research.md                 # Slash command → research-analyze Skill
 
@@ -141,6 +144,14 @@ cli/
 supabase/migrations/
 ├── 001_initial_schema.sql      # Initial schema
 └── 002_v2_schema.sql           # Drops sessions/insights; confirms v2.0 columns
+
+docs/                             # Local artifact copies (written by skills, created by `codifier init`)
+├── rules.md                    # Development rules and coding standards
+├── evals.yaml                  # Evaluation criteria derived from rules
+├── requirements.md             # Functional and non-functional requirements
+├── roadmap.md                  # Phased implementation roadmap
+├── architecture.md             # Architectural summary (from brownfield-onboard)
+└── adr-*.md                    # Architectural decision records
 ```
 
 ## Technology Stack
