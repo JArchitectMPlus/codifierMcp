@@ -49,9 +49,11 @@ This creates a virtuous cycle where knowledge from a developer's session informs
 
 2. **Authenticated connectors to proprietary data** — RepoMix for private code repositories; AWS Athena for data warehouses. Future: SharePoint, Confluence, Google Drive.
 
-3. **Guided friction reduction via Skills** — Role-specific conversational workflows. Developers get project initialization with rules and roadmaps. Researchers get data discovery and synthesis. The LLM reads the Skill and guides the conversation — no choppy step-by-step protocol.
+3. **Local-first session memory** — Capture learnings, gotchas, conventions, and insights during any session. Review and edit locally in `docs/MEMORY.md`, then sync to the shared KB on demand. Every role produces learnings; memory capture is the foundational capability.
 
-4. **Multi-surface access** — IDE via MCP (Cursor, Claude Code, Claude Desktop). CLI installer (`npx codifier init`). Future: Teams bot.
+4. **Guided friction reduction via Skills** — Role-specific conversational workflows. Developers get project initialization with rules and roadmaps. Researchers get data discovery and synthesis. The LLM reads the Skill and guides the conversation — no choppy step-by-step protocol.
+
+5. **Multi-surface access** — IDE via MCP (Cursor, Claude Code, Claude Desktop). CLI installer (`npx codifier init`). Future: Teams bot.
 
 ### Architecture
 
@@ -60,7 +62,7 @@ This creates a virtuous cycle where knowledge from a developer's session informs
 │   MCP Clients                                        │
 │   (Claude Desktop, Cursor, Claude Code)              │
 │                                                      │
-│   Skills (.codifier/skills/)    ← npx codifier init  │
+│   Skills + docs/MEMORY.md       ← npx codifier init  │
 │   Slash Commands (.claude/commands/ or .cursor/rules/)│
 └──────┬──────────────────────────┬────────────────────┘
        │ stdio (local)            │ SSE/HTTP (remote)
@@ -95,6 +97,7 @@ This creates a virtuous cycle where knowledge from a developer's session informs
 - **Research & Analysis**: Define a research objective, discover Athena schema, execute queries, synthesize findings
 - **Cross-Role Knowledge Flow**: A researcher's findings (stored as `research_finding`) are retrieved by a developer via `fetch_context` when initializing a related project
 - **Onboarding AI Assistants**: New AI sessions automatically learn your team's conventions and decisions
+- **Session Memory Capture**: Capture learnings from any session — gotchas, conventions, insights — into `docs/MEMORY.md` via `/remember`, then sync to the shared KB via `/push-memory` for cross-team access
 
 ---
 
@@ -134,6 +137,7 @@ npx codifier init
 
 The CLI prompts for your Codifier server URL (default: `https://codifier-mcp.fly.dev`) and API key, then:
 - Copies all Skills to `.codifier/skills/`
+- Creates `docs/MEMORY.md` for session memory capture
 - Writes slash commands to `.claude/commands/` (Claude Code), `.cursor/rules/` (Cursor), or `.codifier/commands/` (generic)
 - Writes `.mcp.json` (Claude Code) or equivalent client config
 - Verifies MCP connectivity via `GET /health`
@@ -287,6 +291,26 @@ After running `npx codifier init`, Skills live in `.codifier/skills/` in your pr
 
 `skills/shared/codifier-tools.md` is a reference document covering all 5 MCP tools, their parameters, and usage patterns. Every Skill references it.
 
+### Memory Skills (All Roles)
+
+Memory capture is Codifier's foundational capability — every use case produces learnings worth persisting, whether or not it produces a structured artifact.
+
+#### Capture Session (`/remember`)
+
+Elicit and structure session learnings into `docs/MEMORY.md`. No MCP calls — local file only.
+
+**Workflow:** elicit learnings from user → categorize (architecture, gotcha, convention, tooling, data, process) → dedup against existing entries → append to `docs/MEMORY.md`
+
+#### Push Memory (`/push-memory`)
+
+Sync unsynced local learnings to the shared KB with idempotent `[kb:<uuid>]` annotations.
+
+**Workflow:** read `docs/MEMORY.md` → identify entries without `[kb:<uuid>]` prefix → preview and confirm → call `update_memory` per entry → write returned ID back as annotation
+
+#### Recall (`/recall`)
+
+Surface local and shared team learnings. Local recall is instant (no MCP call); shared KB recall uses `fetch_context` filtered by current task context.
+
 ### Developer Skills
 
 #### Initialize Project (`/codify`)
@@ -401,6 +425,10 @@ codifierMcp/
 ├── skills/
 │   ├── shared/
 │   │   └── codifier-tools.md       # All 5 MCP tools reference
+│   ├── capture-session/
+│   │   └── SKILL.md
+│   ├── push-memory/
+│   │   └── SKILL.md
 │   ├── initialize-project/
 │   │   ├── SKILL.md
 │   │   └── templates/
@@ -412,7 +440,10 @@ codifierMcp/
 ├── commands/
 │   ├── codify.md                   # /codify slash command
 │   ├── onboard.md                  # /onboard slash command
-│   └── research.md                 # /research slash command
+│   ├── research.md                 # /research slash command
+│   ├── remember.md                 # /remember slash command
+│   ├── push-memory.md              # /push-memory slash command
+│   └── recall.md                   # /recall slash command
 ├── cli/
 │   ├── bin/codifier.ts             # CLI entry point
 │   ├── detect.ts                   # LLM client detection
@@ -426,7 +457,8 @@ codifierMcp/
 │       └── 002_v2_schema.sql       # Drops sessions/insights; v2.0 schema
 ├── docs/
 │   ├── rules.yaml                  # Project development rules
-│   └── evals.yaml                  # Rule evaluations
+│   ├── evals.yaml                  # Rule evaluations
+│   └── MEMORY.md                   # Session learnings (local-first, synced to KB via /push-memory)
 ├── Dockerfile
 ├── fly.toml
 └── package.json

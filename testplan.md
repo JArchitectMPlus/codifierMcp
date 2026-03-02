@@ -227,6 +227,7 @@ The `.claude/` directory causes `detectEnvironment()` to identify this as a Clau
      ✓ Commands copied to /tmp/codifier-cli-test/.claude/commands
      ✓ Config saved to .codifier/config.json
      ✓ Created docs/ for local artifact storage
+     ✓ Created docs/MEMORY.md for session memory capture
      ✓ MCP config written to /tmp/codifier-cli-test/.mcp.json
      ✓ MCP server reachable
      ✅ Codifier installed successfully!
@@ -251,8 +252,10 @@ After `npx @codifier/cli init` completes from Section 2.1:
    ls /tmp/codifier-cli-test/.codifier/skills/brownfield-onboard/
    ls /tmp/codifier-cli-test/.codifier/skills/research-analyze/
    ls /tmp/codifier-cli-test/.codifier/skills/shared/
+   ls /tmp/codifier-cli-test/.codifier/skills/capture-session/
+   ls /tmp/codifier-cli-test/.codifier/skills/push-memory/
    ```
-4. Expected outcome: each Skill directory (`initialize-project`, `brownfield-onboard`, `research-analyze`) contains `SKILL.md`. `initialize-project` additionally contains a `templates/` subdirectory with `rules-prompt.md`, `evals-prompt.md`, `requirements-prompt.md`, and `roadmap-prompt.md`. `research-analyze` contains a `templates/` subdirectory with `query-generation-prompt.md` and `synthesis-prompt.md`. `shared/` contains `codifier-tools.md` (a reference document, not a Skill).
+4. Expected outcome: each Skill directory (`initialize-project`, `brownfield-onboard`, `research-analyze`) contains `SKILL.md`. `initialize-project` additionally contains a `templates/` subdirectory with `rules-prompt.md`, `evals-prompt.md`, `requirements-prompt.md`, and `roadmap-prompt.md`. `research-analyze` contains a `templates/` subdirectory with `query-generation-prompt.md` and `synthesis-prompt.md`. `shared/` contains `codifier-tools.md` (a reference document, not a Skill). `capture-session` and `push-memory` directories each contain `SKILL.md`.
 
 5. Verify no file is empty:
    ```
@@ -266,6 +269,12 @@ After `npx @codifier/cli init` completes from Section 2.1:
    ```
    Expected outcome: the directory exists (created by `init` for local artifact storage).
 
+7. Verify `docs/MEMORY.md` was created with the correct header:
+   ```
+   cat /tmp/codifier-cli-test/docs/MEMORY.md
+   ```
+   Expected: file exists and contains a header with `# Project Memory` and `_Last updated:`.
+
 ---
 
 ### 2.3 Verification — `.claude/commands/` contains the 3 slash command files
@@ -274,7 +283,7 @@ After `npx @codifier/cli init` completes from Section 2.1:
    ```
    ls /tmp/codifier-cli-test/.claude/commands/
    ```
-2. Expected output: `codify.md`, `onboard.md`, `research.md` are all present.
+2. Expected output: `codify.md`, `onboard.md`, `research.md`, `remember.md`, `push-memory.md`, `recall.md` are all present.
 
 3. Verify each file is non-empty and references the correct Skill path:
    ```
@@ -648,6 +657,149 @@ A non-technical user may run `init` more than once. Verify it doesn't break anyt
 
 ---
 
+## Section 4C — Session Memory Capture Tests
+
+These tests verify the local-first memory capture workflow: `/remember` (capture to local file), `/push-memory` (sync to KB), and `/recall` (retrieve from local + KB). Run these in a project where `npx @codifier/cli init` has been completed.
+
+---
+
+### 4C.1 `/remember` captures learnings to docs/MEMORY.md
+
+1. Open Claude Code in a project with Codifier installed.
+2. Type `/remember`.
+3. When prompted, provide 2-3 learnings. Examples:
+   - "The pack_repo tool returns token_count: 0 for binary-only repos"
+   - "SSE connections drop silently if the Bearer token expires mid-stream"
+   - "All tool handlers should validate with Zod before touching the datastore"
+4. Expected outcome:
+   - Claude structures the learnings into categorized bullet points (e.g., `gotcha`, `convention`)
+   - Claude presents the structured entries for confirmation before writing
+   - Claude appends entries to `docs/MEMORY.md` under category headings
+   - Claude does NOT call `update_memory` or any other MCP tool
+   - The file `docs/MEMORY.md` contains the new entries grouped by category
+5. Verify the file:
+   ```
+   cat docs/MEMORY.md
+   ```
+   Expected: entries appear under category headings (e.g., `## gotcha`, `## convention`). No `[kb:...]` prefixes (entries are unsynced).
+
+---
+
+### 4C.2 `/remember` deduplicates against existing entries
+
+1. Run `/remember` again with one duplicate and one new learning:
+   - Duplicate: "SSE connections drop silently if the Bearer token expires mid-stream" (exact match from 4C.1)
+   - New: "Athena queries timeout after 30s if workgroup config is missing"
+2. Expected outcome:
+   - Claude identifies the duplicate and skips it (or flags it as already captured)
+   - Only the new learning is appended to `docs/MEMORY.md`
+3. Verify:
+   ```
+   grep -c "SSE connections drop" docs/MEMORY.md
+   ```
+   Expected: `1` (not duplicated).
+
+---
+
+### 4C.3 `/push-memory` syncs unsynced entries to KB
+
+1. Type `/push-memory`.
+2. Expected outcome:
+   - Claude reads `docs/MEMORY.md` and identifies entries without `[kb:<uuid>]` annotations as unsynced
+   - Claude shows a preview of unsynced entries grouped by category
+   - Claude asks for confirmation before pushing
+   - After confirmation, Claude calls `update_memory` once per entry with `memory_type: "learning"` and `tags: ["session-context", "<category>"]`
+   - After each successful push, Claude writes the returned ID back into the entry as a `[kb:<uuid>]` prefix
+3. Verify the file was updated with annotations:
+   ```
+   grep "\[kb:" docs/MEMORY.md
+   ```
+   Expected: each pushed entry now has a `[kb:<uuid>]` prefix.
+4. Count MCP tool calls: one `update_memory` per entry pushed (no `run_playbook` or `advance_step`).
+
+---
+
+### 4C.4 `/push-memory` is idempotent — re-push skips already-synced entries
+
+1. Run `/push-memory` again immediately after 4C.3.
+2. Expected outcome:
+   - Claude reads `docs/MEMORY.md` and detects that all entries already have `[kb:<uuid>]` annotations
+   - Claude reports "All entries are already synced" (or equivalent) and exits without calling `update_memory`
+   - Zero MCP tool calls are made
+
+---
+
+### 4C.5 Partial failure recovery — `/push-memory` resumes from where it left off
+
+1. Add 3 new entries to `docs/MEMORY.md` manually (without `[kb:...]` prefixes).
+2. Run `/push-memory`. After 1-2 entries are pushed (you'll see the `[kb:<uuid>]` annotations appear), interrupt the session or simulate a failure.
+3. Re-run `/push-memory` in a new session.
+4. Expected outcome:
+   - Entries that were already pushed (with `[kb:<uuid>]` annotations) are skipped
+   - Only the remaining unsynced entries are pushed
+   - No duplicate records are created in the KB
+
+---
+
+### 4C.6 `/recall` shows local learnings instantly, then optional KB learnings
+
+1. Type `/recall`.
+2. Expected outcome:
+   - Claude reads `docs/MEMORY.md` and presents a summary grouped by category under "Your Local Learnings" — this happens instantly with no MCP call
+   - Claude asks "What are you working on right now?"
+   - After answering, Claude optionally calls `fetch_context` with the task description as the `query` parameter
+   - KB results (if any) are presented under "Shared Team Learnings" — distinct from local results, never merged
+3. Verify that local and KB results are in separate sections.
+
+---
+
+### 4C.7 Cross-user memory access via `/push-memory` and `fetch_context`
+
+Prerequisites: User A has run `/remember` and `/push-memory` on a project.
+
+**User B (different machine or session):**
+1. Connect to the same Codifier server and switch to the same project.
+2. Call `fetch_context` with `{ project_id, memory_type: "learning", tags: ["session-context"] }`.
+3. Expected outcome: User A's pushed learnings appear in the results with correct titles, content, and category tags.
+
+---
+
+### 4C.8 Existing Skills surface local learnings before artifact generation
+
+1. Ensure `docs/MEMORY.md` has entries (from 4C.1-4C.3).
+2. Run `/codify` (or `/onboard` or `/research`).
+3. During the workflow, observe whether Claude reads `docs/MEMORY.md` and surfaces relevant entries before generating artifacts (Step 4b for /codify, Step 3b for /onboard, Step 2b for /research).
+4. Expected outcome:
+   - Claude mentions relevant local learnings from MEMORY.md during the context assembly phase
+   - This is a local file read — no MCP call is made for this step
+   - If `docs/MEMORY.md` does not exist, the step is skipped silently (no error)
+
+---
+
+### 4C.9 Existing Skills suggest memory capture at end of workflow
+
+1. Complete any Skill workflow (/codify, /onboard, or /research) to its final step.
+2. Expected outcome: Claude suggests running `/remember` or `/push-memory` at the end of the workflow.
+3. This is a suggestion only — Claude does not automatically invoke the capture or push Skills.
+
+---
+
+### 4C.10 `npx codifier update` backfills docs/MEMORY.md
+
+1. In a project where Codifier was installed before the memory feature (no `docs/MEMORY.md` exists):
+   ```
+   rm docs/MEMORY.md  # Simulate pre-memory install
+   npx @codifier/cli update
+   ```
+2. Expected outcome:
+   - `docs/MEMORY.md` is created with a placeholder header
+   - Output includes: `✓ Created docs/MEMORY.md for session memory capture`
+   - Existing `docs/` files (rules.yaml, etc.) are not affected
+3. Re-run `npx @codifier/cli update` when the file already exists:
+   - Expected: the file is NOT overwritten (guarded by `existsSync`)
+
+---
+
 ## Section 5 — Verification Checklist Summary
 
 Run through this checklist after completing the above sections. Each item maps to a specific test above.
@@ -674,6 +826,17 @@ Run through this checklist after completing the above sections. Each item maps t
 | 18 | Cowork: `codifier doctor` passes all checks | Section 4B.4 | |
 | 19 | Cowork: `/codify` slash command triggers the Initialize Project skill and persists artifacts | Section 4B.5 | |
 | 20 | Cowork: re-running `init` is idempotent and does not break the project | Section 4B.6 | |
+| 21 | `npx codifier init` creates `docs/MEMORY.md` with placeholder header | Section 2.2, 4C.10 | |
+| 22 | `/remember` captures structured learnings to `docs/MEMORY.md` without MCP calls | Section 4C.1 | |
+| 23 | `/remember` deduplicates against existing entries (exact string match) | Section 4C.2 | |
+| 24 | `/push-memory` syncs unsynced entries with `[kb:uuid]` annotations | Section 4C.3 | |
+| 25 | `/push-memory` is idempotent — re-push with no new entries makes zero MCP calls | Section 4C.4 | |
+| 26 | `/push-memory` partial failure recovery — resumes from annotated entries | Section 4C.5 | |
+| 27 | `/recall` shows local learnings instantly, KB learnings as distinct section | Section 4C.6 | |
+| 28 | Cross-user memory access: User B retrieves User A's pushed session learnings | Section 4C.7 | |
+| 29 | Existing Skills surface `docs/MEMORY.md` before artifact generation (Steps 4b/3b/2b) | Section 4C.8 | |
+| 30 | Existing Skills suggest `/remember` and `/push-memory` at end of workflow | Section 4C.9 | |
+| 31 | `npx codifier update` backfills `docs/MEMORY.md` if missing | Section 4C.10 | |
 
 ---
 
@@ -705,3 +868,12 @@ This was a bug in pre-2.0.5 versions where `doctor` checked for a duplicate `ski
 
 **Cowork: `codifier init` hangs waiting for input (TTY stall)**
 Cowork's sandbox does not provide a TTY on stdin. If `codifier init` is run without `--url`/`--key` flags and without `CODIFIER_SERVER_URL`/`CODIFIER_API_KEY` env vars, the `readline` prompt will hang indefinitely because there is no terminal to read from. Fix: always use `--url` and `--key` flags in non-TTY environments (e.g., `npx @codifier/cli init --client cowork --url https://codifier-mcp.fly.dev --key <key>`). As of the non-interactive init update, the CLI detects `!process.stdin.isTTY`, skips prompts, defaults the URL, and exits with an error if no key is provided — preventing the hang.
+
+**`/remember` says "docs/MEMORY.md not found"**
+Run `npx @codifier/cli init` or `npx @codifier/cli update` to create the file. Alternatively, the `/remember` Skill creates the file with a placeholder header if it doesn't exist — this is by design.
+
+**`/push-memory` creates duplicate entries in the KB**
+This should not happen if the `[kb:<uuid>]` annotation system is working correctly. Check that after each push, entries in `docs/MEMORY.md` have `[kb:<uuid>]` prefixes. If annotations are missing, the Skill may have failed to write the file after a successful `update_memory` call. Re-run `/push-memory` — it will detect entries without annotations as unsynced and attempt to push them (which may create duplicates if the original push succeeded but annotation failed). To resolve: manually add `[kb:<uuid>]` annotations by checking the memory IDs in Supabase.
+
+**`/recall` shows stale or missing KB results**
+Local recall (`docs/MEMORY.md`) is always current. KB results depend on whether `/push-memory` has been run. If local entries don't appear in KB recall, run `/push-memory` first. KB results are filtered by `tags: ["session-context"]` — entries pushed without this tag won't appear.
