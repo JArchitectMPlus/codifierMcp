@@ -27,7 +27,7 @@ function prompt(question: string): Promise<string> {
   });
 }
 
-export async function runInit(clientOverride?: ClientType): Promise<void> {
+export async function runInit(clientOverride?: ClientType, urlFlag?: string, keyFlag?: string): Promise<void> {
   const cwd = process.cwd();
   const env = detectEnvironment(cwd, clientOverride);
 
@@ -67,11 +67,21 @@ export async function runInit(clientOverride?: ClientType): Promise<void> {
     console.log('✓ Cowork plugin manifest written to .claude-plugin/plugin.json');
   }
 
-  // 3. Prompt for server URL and API key
+  // 3. Resolve server URL and API key: flags → env vars → interactive prompt → default/error
   const DEFAULT_SERVER_URL = 'https://codifier-mcp.fly.dev';
-  const serverUrlInput = await prompt(`Codifier MCP server URL [${DEFAULT_SERVER_URL}]: `);
-  const serverUrl = serverUrlInput || DEFAULT_SERVER_URL;
-  const apiKey = await prompt('Codifier API key: ');
+  const serverUrl = urlFlag
+    || process.env.CODIFIER_SERVER_URL
+    || (process.stdin.isTTY ? await prompt(`Codifier MCP server URL [${DEFAULT_SERVER_URL}]: `) : '')
+    || DEFAULT_SERVER_URL;
+
+  const apiKey = keyFlag
+    || process.env.CODIFIER_API_KEY
+    || (process.stdin.isTTY ? await prompt('Codifier API key: ') : '');
+
+  if (!apiKey) {
+    console.error('Error: No API key provided. Use --key <key> or set CODIFIER_API_KEY.');
+    process.exit(1);
+  }
 
   // 4. Write .codifier/config.json
   const configDir = join(cwd, '.codifier');

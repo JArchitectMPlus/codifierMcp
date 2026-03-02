@@ -20,8 +20,10 @@ program
   .command('init')
   .description('Scaffold Codifier skills, slash commands, and MCP config into this project')
   .option('--client <type>', 'Override client detection (claude-code, cowork, cursor, windsurf)')
-  .action(async (opts: { client?: string }) => {
-    await runInit(opts.client as ClientType | undefined);
+  .option('--url <serverUrl>', 'MCP server URL (skips interactive prompt)')
+  .option('--key <apiKey>', 'Codifier API key (skips interactive prompt)')
+  .action(async (opts: { client?: string; url?: string; key?: string }) => {
+    await runInit(opts.client as ClientType | undefined, opts.url, opts.key);
   });
 
 program
