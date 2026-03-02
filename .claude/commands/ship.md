@@ -12,12 +12,14 @@ Stage all changes, generate a descriptive commit message, and push to the remote
 
 4. Stage all relevant files. Prefer `git add` with specific file paths rather than `git add -A`. Never stage files that likely contain secrets (`.env`, `credentials.json`, `*.pem`, `*.key`). If such files exist, warn the user and exclude them.
 
-5. Draft a commit message:
+5. **Version bump check (npm-published files):** If any of the changed files are under `cli/`, `skills/`, `commands/`, or `package.json` itself — these are paths shipped in the npm package — check whether `package.json` version has already been bumped in this changeset. If it has NOT been bumped, ask the user whether to bump patch, minor, or skip. If they choose patch or minor, update the `"version"` field in `package.json` and include it in the staged files. This ensures the CI `publish-npm` job (which gates on version change) will trigger.
+
+6. Draft a commit message:
    - First line: imperative mood, under 72 characters, summarizing the "why" not the "what".
    - If multiple logical changes exist, add a blank line then bullet points for each change.
    - End with: `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>`
 
-6. Present the proposed commit message to the user and ask for approval before committing. Use the commit message in a HEREDOC format:
+7. Present the proposed commit message to the user and ask for approval before committing. Use the commit message in a HEREDOC format:
    ```
    git commit -m "$(cat <<'EOF'
    <message here>
@@ -27,13 +29,13 @@ Stage all changes, generate a descriptive commit message, and push to the remote
    )"
    ```
 
-7. After a successful commit, push to the remote:
+8. After a successful commit, push to the remote:
    ```
    git push origin <current-branch>
    ```
    Use the `-u` flag if the branch has no upstream set. Do NOT reset the remote URL — it is already configured correctly.
 
-8. Report the result: commit hash, branch name, and remote URL.
+9. Report the result: commit hash, branch name, and remote URL.
 
 ## Error Handling
 
