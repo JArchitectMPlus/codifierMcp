@@ -6,7 +6,7 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-export type ClientType = 'claude-code' | 'cursor' | 'windsurf' | 'generic';
+export type ClientType = 'claude-code' | 'cowork' | 'cursor' | 'windsurf' | 'generic';
 
 export interface DetectedEnvironment {
   clientType: ClientType;
@@ -15,6 +15,15 @@ export interface DetectedEnvironment {
 }
 
 export function detectEnvironment(cwd: string = process.cwd()): DetectedEnvironment {
+  // Cowork uses .claude-plugin/ — check before .claude/ to avoid false match
+  if (existsSync(join(cwd, '.claude-plugin'))) {
+    return {
+      clientType: 'cowork',
+      commandsDir: join(cwd, '.claude-plugin', 'commands'),
+      mcpConfigPath: join(cwd, '.mcp.json'),
+    };
+  }
+
   if (existsSync(join(cwd, '.claude'))) {
     return {
       clientType: 'claude-code',

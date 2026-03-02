@@ -3,7 +3,7 @@
  * Copies skills, slash commands, and writes MCP config.
  */
 
-import { mkdirSync, cpSync, writeFileSync, existsSync } from 'fs';
+import { mkdirSync, cpSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as readline from 'readline';
@@ -52,6 +52,27 @@ export async function runInit(): Promise<void> {
     console.log(`✓ Commands copied to ${env.commandsDir}`);
   } else {
     console.warn(`⚠ Commands source not found at ${COMMANDS_SOURCE} — skipping`);
+  }
+
+  // 2b. Cowork: write plugin.json manifest and copy skills into .claude-plugin/skills/
+  if (env.clientType === 'cowork') {
+    const pluginDir = join(cwd, '.claude-plugin');
+    const version = getPackageVersion();
+    const manifest = {
+      name: 'codifier',
+      description: 'Institutional memory for AI-driven development',
+      version,
+    };
+    writeFileSync(join(pluginDir, 'plugin.json'), JSON.stringify(manifest, null, 2));
+    console.log('✓ Cowork plugin manifest written to .claude-plugin/plugin.json');
+
+    // Cowork auto-discovers skills/ inside .claude-plugin/
+    const coworkSkillsDest = join(pluginDir, 'skills');
+    mkdirSync(coworkSkillsDest, { recursive: true });
+    if (existsSync(SKILLS_SOURCE)) {
+      cpSync(SKILLS_SOURCE, coworkSkillsDest, { recursive: true });
+      console.log('✓ Skills copied to .claude-plugin/skills/ for Cowork discovery');
+    }
   }
 
   // 3. Prompt for server URL and API key
@@ -109,4 +130,14 @@ function buildMcpConfig(serverUrl: string, apiKey: string): Record<string, unkno
       },
     },
   };
+}
+
+function getPackageVersion(): string {
+  try {
+    const pkgPath = join(PACKAGE_ROOT, 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string };
+    return pkg.version;
+  } catch {
+    return '2.0.0';
+  }
 }

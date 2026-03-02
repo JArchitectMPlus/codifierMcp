@@ -4,6 +4,7 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { detectEnvironment } from './detect.js';
 
 const REQUIRED_SKILLS = [
   'initialize-project/SKILL.md',
@@ -34,6 +35,29 @@ export async function runDoctor(): Promise<void> {
       allGood = false;
     } else {
       console.log(`✓ .codifier/skills/${skillFile}`);
+    }
+  }
+
+  // Check Cowork-specific files
+  const env = detectEnvironment(cwd);
+  if (env.clientType === 'cowork') {
+    const manifestPath = join(cwd, '.claude-plugin', 'plugin.json');
+    if (!existsSync(manifestPath)) {
+      console.error('✗ .claude-plugin/plugin.json not found — run `codifier init` to regenerate');
+      allGood = false;
+    } else {
+      console.log('✓ .claude-plugin/plugin.json found');
+    }
+
+    // Verify skills are also in .claude-plugin/skills/
+    for (const skillFile of REQUIRED_SKILLS) {
+      const coworkSkillPath = join(cwd, '.claude-plugin', 'skills', skillFile);
+      if (!existsSync(coworkSkillPath)) {
+        console.error(`✗ Missing Cowork skill: .claude-plugin/skills/${skillFile}`);
+        allGood = false;
+      } else {
+        console.log(`✓ .claude-plugin/skills/${skillFile}`);
+      }
     }
   }
 
