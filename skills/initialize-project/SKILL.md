@@ -54,6 +54,14 @@ Call `fetch_context` with `{ project_id }` (no type filter) to retrieve any prio
 
 Summarize any relevant findings to the user before generating artifacts.
 
+### Step 4b — Surface Local Learnings
+
+Attempt to read `docs/MEMORY.md`. If the file does not exist, skip this step silently and continue to Step 5.
+
+If the file exists, scan it for entries relevant to this project — particularly entries in the `architecture`, `gotcha`, and `convention` categories. Summarize relevant local learnings to the user alongside the KB context from Step 4.
+
+Note: This is a local file read — no MCP call required.
+
 ### Step 5 — Generate Rules.md
 
 Using the prompt template in `templates/rules-prompt.md`, generate a comprehensive set of development rules and coding standards for this project.
@@ -165,3 +173,13 @@ Pack all repos first. Spend extra time in conversation understanding the existin
 - If `pack_repo` fails for a URL: log the error, inform the user, and continue with remaining URLs.
 - If `update_memory` fails: retry once. If still failing, present the artifact as a code block the user can save manually.
 - If the user provides no description or SOW: ask at least 3 clarifying questions before attempting artifact generation.
+
+---
+
+## End-of-Workflow Memory Capture
+
+After completing Step 11, suggest to the user:
+
+> "You may have learned things during this session worth capturing. Run `/remember` to capture session learnings to docs/MEMORY.md, or `/push-memory` to sync existing local memories to the shared KB."
+
+This is a suggestion only — do not automatically invoke the capture or push Skills.

@@ -31,6 +31,14 @@ Call `fetch_context` with `{ project_id, memory_type: "research_finding" }` to s
 
 If prior findings exist, summarize them briefly: **"Here's what we've found before on this project..."**
 
+### Step 2b — Surface Local Learnings
+
+Attempt to read `docs/MEMORY.md`. If the file does not exist, skip this step silently and continue to Step 3.
+
+If the file exists, scan for entries relevant to the research domain — particularly `data`, `gotcha`, and `convention` categories. Present relevant local learnings to the user alongside KB findings from Step 2. This may help refine the research objective.
+
+Note: This is a local file read — no MCP call required.
+
 ### Step 3 — Define the Research Objective
 
 Ask the user to describe:
@@ -129,3 +137,13 @@ Tell the user:
 - If a query exceeds the 100KB result cap: the tool returns a truncation notice. Acknowledge this in the findings methodology section.
 - If the user asks to run a non-SELECT query: refuse and explain the SELECT-only constraint. Offer an alternative SELECT formulation if possible.
 - If synthesis produces speculative conclusions: flag them explicitly with confidence levels (High/Medium/Low) per the synthesis template.
+
+---
+
+## End-of-Workflow Memory Capture
+
+After completing Step 10, suggest to the user:
+
+> "You may have learned things during this research session worth capturing. Run `/remember` to capture session learnings to docs/MEMORY.md, or `/push-memory` to sync existing local memories to the shared KB."
+
+This is a suggestion only — do not automatically invoke the capture or push Skills.

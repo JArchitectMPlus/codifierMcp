@@ -121,3 +121,67 @@ Discover schemas and execute SELECT queries against an AWS Athena data warehouse
 - Execute a query: `{ operation: "execute-query", project_id, query: "SELECT user_id, COUNT(*) FROM events GROUP BY 1 LIMIT 100" }`
 
 **Constraints:** Only SELECT statements are permitted. DDL and DML are rejected.
+
+---
+
+## Session Memory Lifecycle
+
+Memory capture is Codifier's foundational capability — every use case produces learnings worth persisting, whether or not it produces a structured artifact. The lifecycle is local-first with on-demand KB sync.
+
+### Flow
+
+```
+/remember (capture)  →  docs/MEMORY.md (local)  →  user edits  →  /push-memory (sync to KB)
+                                                                          ↓
+/recall (retrieve)   ←  docs/MEMORY.md (local)  +  fetch_context (KB)  ←─┘
+```
+
+1. **Capture** (`/remember`): The LLM elicits learnings from the user, structures them as categorized bullet points, and appends them to `docs/MEMORY.md`. No MCP calls. Local file only.
+
+2. **Review**: The user edits `docs/MEMORY.md` directly — add, remove, recategorize, or refine entries. The file is human-readable markdown grouped by category.
+
+3. **Push** (`/push-memory`): The LLM reads `docs/MEMORY.md`, identifies unsynced entries (those without a `[kb:<uuid>]` annotation), and calls `update_memory` once per entry. After each successful push, the returned `id` is written back as a `[kb:<uuid>]` annotation, making the operation idempotent and resumable.
+
+4. **Recall** (`/recall`): Reads `docs/MEMORY.md` for instant local recall (no MCP call), then optionally calls `fetch_context` to supplement with shared team learnings from the KB. Local and KB results are presented as distinct sections, never merged.
+
+### Session-Context Learning Pattern for `update_memory`
+
+When pushing session learnings to the KB, use this pattern:
+
+```json
+{
+  "project_id": "<project-uuid>",
+  "memory_type": "learning",
+  "title": "<category>: <first ~60 chars of bullet text>",
+  "content": { "text": "<full bullet text>", "category": "<category>" },
+  "tags": ["session-context", "<category>"],
+  "description": "<full bullet text>"
+}
+```
+
+**Tag contract:**
+- All session learnings carry the `"session-context"` tag — this is the primary filter for retrieving session memories across the team
+- The category tag (e.g., `"gotcha"`, `"convention"`, `"architecture"`) is the secondary filter
+
+**Idempotency via `[kb:<uuid>]` annotations:**
+- After a successful `update_memory` call, the returned `id` is written into the `docs/MEMORY.md` entry as: `- [kb:<uuid>] The actual learning text`
+- On re-push, entries with `[kb:<uuid>]` annotations are skipped (already synced)
+- To update an existing KB record, pass the annotated `id` to `update_memory` as the `id` parameter — this triggers an update instead of a create
+
+**Retrieving session learnings:**
+- All session learnings for a project: `fetch_context({ project_id, memory_type: "learning", tags: ["session-context"] })`
+- Filtered by category: `fetch_context({ project_id, memory_type: "learning", tags: ["session-context", "gotcha"] })`
+- Full-text search: `fetch_context({ project_id, memory_type: "learning", tags: ["session-context"], query: "API timeout" })`
+
+### Categories
+
+Standard categories for session learnings (not exhaustive — users can add their own):
+
+| Category | Use for |
+|----------|---------|
+| `architecture` | System design patterns, structural decisions, component relationships |
+| `gotcha` | Surprising behaviors, edge cases, things that break unexpectedly |
+| `convention` | Naming patterns, file organization, coding standards discovered |
+| `tooling` | Tool configurations, CLI flags, environment setup details |
+| `data` | Data schemas, query patterns, data quality observations |
+| `process` | Workflow insights, team practices, deployment procedures |

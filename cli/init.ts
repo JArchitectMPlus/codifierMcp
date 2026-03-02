@@ -95,6 +95,17 @@ export async function runInit(clientOverride?: ClientType, urlFlag?: string, key
   mkdirSync(docsDir, { recursive: true });
   console.log('✓ Created docs/ for local artifact storage');
 
+  // 4c. Create docs/MEMORY.md placeholder if it doesn't exist
+  const memoryFile = join(docsDir, 'MEMORY.md');
+  if (!existsSync(memoryFile)) {
+    const memoryPlaceholder = `# Project Memory
+_Last updated: ${new Date().toISOString().split('T')[0]}_
+
+`;
+    writeFileSync(memoryFile, memoryPlaceholder);
+    console.log('✓ Created docs/MEMORY.md for session memory capture');
+  }
+
   // 5. Write MCP config (client-specific format)
   const mcpConfig = buildMcpConfig(serverUrl, apiKey);
   writeFileSync(env.mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
@@ -119,7 +130,11 @@ export async function runInit(clientOverride?: ClientType, urlFlag?: string, key
   console.log('  • Initialize Project  →  /codify');
   console.log('  • Brownfield Onboard  →  /onboard');
   console.log('  • Research & Analyze  →  /research');
-  console.log('  • Artifacts will be saved locally to docs/');
+  console.log('\nMemory capture:');
+  console.log('  • Capture learnings   →  /remember');
+  console.log('  • Push to shared KB   →  /push-memory');
+  console.log('  • Recall learnings    →  /recall');
+  console.log('\n  Artifacts and memories saved locally to docs/');
   console.log('\nRun /codify in your LLM client to start your first project.\n');
 }
 

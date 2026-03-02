@@ -40,6 +40,14 @@ Also ask: **"What is the current state of these repos — active development, le
 
 Call `fetch_context` with `{ project_id }` to retrieve any prior memories for this project. Summarize relevant findings to the user — prior architectural decisions, existing rules, or previous onboarding notes are important context.
 
+### Step 3b — Surface Local Learnings
+
+Attempt to read `docs/MEMORY.md`. If the file does not exist, skip this step silently and continue to Step 4.
+
+If the file exists, scan for entries relevant to the repositories being onboarded — particularly `architecture`, `gotcha`, and `convention` categories. Present relevant local learnings to the user alongside KB context from Step 3.
+
+Note: This is a local file read — no MCP call required.
+
 ### Step 4 — Pack Repositories
 
 For each repository URL:
@@ -122,3 +130,13 @@ Tell the user:
 - If `pack_repo` times out or fails: note the error in the summary, ask the user if they want to retry or skip.
 - If a repo is private and credentials are not configured: inform the user that the server needs the relevant token (`GITHUB_TOKEN`, `GITLAB_TOKEN`) configured as an environment variable.
 - If the packed content is very large (>500K tokens): focus the architectural summary on the highest-level structural observations rather than deep code analysis.
+
+---
+
+## End-of-Workflow Memory Capture
+
+After completing Step 9, suggest to the user:
+
+> "You may have learned things during this onboarding session worth capturing. Run `/remember` to capture session learnings to docs/MEMORY.md, or `/push-memory` to sync existing local memories to the shared KB."
+
+This is a suggestion only — do not automatically invoke the capture or push Skills.

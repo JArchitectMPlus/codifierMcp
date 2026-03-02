@@ -2,7 +2,7 @@
  * `codifier update` — pull latest skills from the npm package.
  */
 
-import { cpSync, existsSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { detectEnvironment } from './detect.js';
@@ -28,4 +28,17 @@ export async function runUpdate(): Promise<void> {
   cpSync(SKILLS_SOURCE, env.skillsDir, { recursive: true });
   console.log(`✓ Skills updated in ${env.skillsDir}`);
   console.log('Note: .codifier/config.json was preserved.');
+
+  // Backfill docs/MEMORY.md for users upgrading from a previous install
+  const docsDir = join(cwd, 'docs');
+  mkdirSync(docsDir, { recursive: true });
+  const memoryFile = join(docsDir, 'MEMORY.md');
+  if (!existsSync(memoryFile)) {
+    const memoryPlaceholder = `# Project Memory
+_Last updated: ${new Date().toISOString().split('T')[0]}_
+
+`;
+    writeFileSync(memoryFile, memoryPlaceholder);
+    console.log('✓ Created docs/MEMORY.md for session memory capture');
+  }
 }
