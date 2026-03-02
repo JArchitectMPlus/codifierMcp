@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { detectEnvironment } from './detect.js';
+import { detectEnvironment, type ClientType } from './detect.js';
 
 const REQUIRED_SKILLS = [
   'initialize-project/SKILL.md',
@@ -12,12 +12,13 @@ const REQUIRED_SKILLS = [
   'research-analyze/SKILL.md',
 ];
 
-export async function runDoctor(): Promise<void> {
+export async function runDoctor(clientOverride?: ClientType): Promise<void> {
   const cwd = process.cwd();
+  const env = detectEnvironment(cwd, clientOverride);
   const configPath = join(cwd, '.codifier', 'config.json');
   let allGood = true;
 
-  console.log('\nCodifier Doctor\n');
+  console.log(`\nCodifier Doctor (client: ${env.clientType})\n`);
 
   // Check config
   if (!existsSync(configPath)) {
@@ -27,37 +28,25 @@ export async function runDoctor(): Promise<void> {
     console.log('✓ .codifier/config.json found');
   }
 
-  // Check skill files
+  // Check skill files in the client-appropriate location
   for (const skillFile of REQUIRED_SKILLS) {
-    const fullPath = join(cwd, '.codifier', 'skills', skillFile);
+    const fullPath = join(env.skillsDir, skillFile);
     if (!existsSync(fullPath) || readFileSync(fullPath, 'utf8').trim().length === 0) {
-      console.error(`✗ Missing or empty: .codifier/skills/${skillFile}`);
+      console.error(`✗ Missing or empty: ${skillFile} in ${env.skillsDir}`);
       allGood = false;
     } else {
-      console.log(`✓ .codifier/skills/${skillFile}`);
+      console.log(`✓ ${skillFile}`);
     }
   }
 
   // Check Cowork-specific files
-  const env = detectEnvironment(cwd);
   if (env.clientType === 'cowork') {
     const manifestPath = join(cwd, '.claude-plugin', 'plugin.json');
     if (!existsSync(manifestPath)) {
-      console.error('✗ .claude-plugin/plugin.json not found — run `codifier init` to regenerate');
+      console.error('✗ .claude-plugin/plugin.json not found — run `codifier init --client cowork` to regenerate');
       allGood = false;
     } else {
       console.log('✓ .claude-plugin/plugin.json found');
-    }
-
-    // Verify skills are also in .claude-plugin/skills/
-    for (const skillFile of REQUIRED_SKILLS) {
-      const coworkSkillPath = join(cwd, '.claude-plugin', 'skills', skillFile);
-      if (!existsSync(coworkSkillPath)) {
-        console.error(`✗ Missing Cowork skill: .claude-plugin/skills/${skillFile}`);
-        allGood = false;
-      } else {
-        console.log(`✓ .claude-plugin/skills/${skillFile}`);
-      }
     }
   }
 

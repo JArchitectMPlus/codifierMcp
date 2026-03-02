@@ -7,7 +7,7 @@ import { mkdirSync, cpSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as readline from 'readline';
-import { detectEnvironment } from './detect.js';
+import { detectEnvironment, type ClientType } from './detect.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -27,19 +27,18 @@ function prompt(question: string): Promise<string> {
   });
 }
 
-export async function runInit(): Promise<void> {
+export async function runInit(clientOverride?: ClientType): Promise<void> {
   const cwd = process.cwd();
-  const env = detectEnvironment(cwd);
+  const env = detectEnvironment(cwd, clientOverride);
 
   console.log(`\nCodifier Init — detected client: ${env.clientType}\n`);
 
-  // 1. Create .codifier/skills/ and copy all skills
-  const skillsDest = join(cwd, '.codifier', 'skills');
-  mkdirSync(skillsDest, { recursive: true });
+  // 1. Copy skills to the client-appropriate location
+  mkdirSync(env.skillsDir, { recursive: true });
 
   if (existsSync(SKILLS_SOURCE)) {
-    cpSync(SKILLS_SOURCE, skillsDest, { recursive: true });
-    console.log('✓ Skills copied to .codifier/skills/');
+    cpSync(SKILLS_SOURCE, env.skillsDir, { recursive: true });
+    console.log(`✓ Skills copied to ${env.skillsDir}`);
   } else {
     console.warn(`⚠ Skills source not found at ${SKILLS_SOURCE} — skipping`);
   }
@@ -54,9 +53,10 @@ export async function runInit(): Promise<void> {
     console.warn(`⚠ Commands source not found at ${COMMANDS_SOURCE} — skipping`);
   }
 
-  // 2b. Cowork: write plugin.json manifest and copy skills into .claude-plugin/skills/
+  // 2b. Cowork: write plugin.json manifest
   if (env.clientType === 'cowork') {
     const pluginDir = join(cwd, '.claude-plugin');
+    mkdirSync(pluginDir, { recursive: true });
     const version = getPackageVersion();
     const manifest = {
       name: 'codifier',
@@ -65,14 +65,6 @@ export async function runInit(): Promise<void> {
     };
     writeFileSync(join(pluginDir, 'plugin.json'), JSON.stringify(manifest, null, 2));
     console.log('✓ Cowork plugin manifest written to .claude-plugin/plugin.json');
-
-    // Cowork auto-discovers skills/ inside .claude-plugin/
-    const coworkSkillsDest = join(pluginDir, 'skills');
-    mkdirSync(coworkSkillsDest, { recursive: true });
-    if (existsSync(SKILLS_SOURCE)) {
-      cpSync(SKILLS_SOURCE, coworkSkillsDest, { recursive: true });
-      console.log('✓ Skills copied to .claude-plugin/skills/ for Cowork discovery');
-    }
   }
 
   // 3. Prompt for server URL and API key

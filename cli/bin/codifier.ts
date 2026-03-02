@@ -9,6 +9,7 @@ import { runInit } from '../init.js';
 import { runUpdate } from '../update.js';
 import { runAdd } from '../add.js';
 import { runDoctor } from '../doctor.js';
+import type { ClientType } from '../detect.js';
 
 program
   .name('codifier')
@@ -18,8 +19,9 @@ program
 program
   .command('init')
   .description('Scaffold Codifier skills, slash commands, and MCP config into this project')
-  .action(async () => {
-    await runInit();
+  .option('--client <type>', 'Override client detection (claude-code, cowork, cursor, windsurf)')
+  .action(async (opts: { client?: string }) => {
+    await runInit(opts.client as ClientType | undefined);
   });
 
 program
@@ -39,8 +41,9 @@ program
 program
   .command('doctor')
   .description('Verify MCP connectivity and check installed skill files')
-  .action(async () => {
-    await runDoctor();
+  .option('--client <type>', 'Override client detection (claude-code, cowork, cursor, windsurf)')
+  .action(async (opts: { client?: string }) => {
+    await runDoctor(opts.client as ClientType | undefined);
   });
 
 program.parseAsync(process.argv).catch((err: Error) => {
