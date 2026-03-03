@@ -223,14 +223,40 @@ evaluations:
     date: "2026-02-28"
     reviewer: "Stateless Transport Fix"
 
+  - id: "E018"
+    rule_id: "R017"
+    status: "passing"
+    test_case: "Generated .mcp.json includes 'type: http' and uses /mcp endpoint"
+    result: "buildMcpConfig() in cli/init.ts produces a config with type: 'http' and url pointing to /mcp. Claude Code parses the config without schema errors."
+    evidence:
+      - "cli/init.ts: buildMcpConfig() returns { type: 'http', url: `${serverUrl}/mcp`, headers: { ... } }"
+      - "Root cause of the bug: missing 'type' field caused Claude Code's discriminated union parser to reject the config entirely"
+      - "Secondary issue: /sse endpoint was used instead of /mcp; /sse is legacy SSE transport, not StreamableHTTP"
+      - "Fix applied 2026-03-03: added type: 'http', changed /sse to /mcp"
+    date: "2026-03-03"
+    reviewer: "MCP Config Schema Fix"
+
+  - id: "E019"
+    rule_id: "R017"
+    status: "needs-validation"
+    test_case: "CLI doctor command validates generated .mcp.json schema"
+    result: "The codifier doctor command should parse the project's .mcp.json and validate it against known client schemas to catch config errors before the user encounters them."
+    evidence:
+      - "cli/doctor.ts exists but does not yet validate .mcp.json schema shape"
+      - "Schema validation would catch missing 'type' field and wrong endpoint early"
+    date: "2026-03-03"
+    reviewer: "MCP Config Schema Fix"
+    notes: "Consider adding .mcp.json schema validation to the doctor command as a preventive check"
+
 summary:
-  total_evaluations: 17
-  passing: 15
+  total_evaluations: 19
+  passing: 16
   failing: 0
-  needs_validation: 2
-  coverage: "All Phase 1 rules validated; stateless transport fix and PaaS resilience rules added (2026-02-28)"
+  needs_validation: 3
+  coverage: "All Phase 1 rules validated; stateless transport fix, PaaS resilience, and MCP config schema rules added"
   next_steps:
     - "Validate MCP tool schema patterns when server is implemented"
     - "Validate Supabase migration when Phase 2 begins"
     - "Run tests/http-server.test.js as part of CI to keep E015/E016 continuously validated"
+    - "Add .mcp.json schema validation to codifier doctor (E019)"
     - "Track rule evolution as new patterns emerge"

@@ -420,3 +420,30 @@ rules:
       created: "2026-02-28"
       priority: "high"
       tags: ["architecture", "paas", "fly.io", "persistence", "supabase", "filesystem"]
+
+  - id: "R017"
+    category: "cli"
+    title: "Generated MCP Config Must Match Client Schema"
+    description: "The CLI installer generates .mcp.json files consumed by LLM clients (Claude Code, Cursor, etc.). Each client enforces a strict JSON schema. Generated configs must include all required discriminator fields (e.g., 'type') and use the correct transport endpoint. Failing to match the schema causes a silent parse failure — the server entry is ignored with no actionable error for the user."
+    confidence: 1.0
+    patterns:
+      - "Include 'type: http' in .mcp.json for remote StreamableHTTP servers"
+      - "Use the /mcp endpoint (StreamableHTTP) as the URL, not /sse (legacy)"
+      - "Test generated .mcp.json against the target client's schema before releasing"
+      - "Keep buildMcpConfig() as the single source of truth for config shape"
+      - "When adding support for new clients, verify their schema requirements independently"
+    antipatterns:
+      - "Omitting the 'type' field from .mcp.json (fails Claude Code's discriminated union)"
+      - "Using /sse endpoint in 'type: http' configs (SSE is a different transport)"
+      - "Hardcoding config shapes in multiple places instead of using buildMcpConfig()"
+      - "Assuming all MCP clients accept the same .mcp.json schema"
+      - "Generating config without end-to-end testing in the target client"
+    examples:
+      - "Good: { type: 'http', url: 'https://codifier-mcp.fly.dev/mcp', headers: { ... } }"
+      - "Bad: { url: 'https://codifier-mcp.fly.dev/sse', headers: { ... } } (missing type, wrong endpoint)"
+      - "Good: buildMcpConfig() returns the complete, schema-valid config object"
+      - "Bad: Inline object literal spread across init.ts without validation"
+    metadata:
+      created: "2026-03-03"
+      priority: "critical"
+      tags: ["cli", "mcp-config", "schema-validation", "installer", "developer-experience"]

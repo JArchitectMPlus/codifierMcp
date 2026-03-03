@@ -142,7 +142,8 @@ function buildMcpConfig(serverUrl: string, apiKey: string): Record<string, unkno
   return {
     mcpServers: {
       codifier: {
-        url: `${serverUrl}/sse`,
+        type: 'http',
+        url: `${serverUrl}/mcp`,
         headers: { Authorization: `Bearer ${apiKey}` },
       },
     },
