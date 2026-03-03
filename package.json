@@ -1,6 +1,6 @@
 {
   "name": "codifier",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "MCP server for institutional memory management",
   "main": "dist/index.js",
   "bin": {
