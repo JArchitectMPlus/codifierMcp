@@ -109,7 +109,7 @@ jobs:
       id-token: write
     environment:
       name: production-npm
-      url: https://www.npmjs.com/package/@codifier/cli
+      url: https://www.npmjs.com/package/codifier
 
     steps:
       - name: Checkout repository
