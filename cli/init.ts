@@ -62,6 +62,7 @@ export async function runInit(clientOverride?: ClientType, urlFlag?: string, key
       name: 'codifier',
       description: 'Institutional memory for AI-driven development',
       version,
+      author: { name: 'Codifier' },
     };
     writeFileSync(join(pluginDir, 'plugin.json'), JSON.stringify(manifest, null, 2));
     console.log('✓ Cowork plugin manifest written to .claude-plugin/plugin.json');

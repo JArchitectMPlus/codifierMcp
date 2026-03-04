@@ -142,6 +142,14 @@ The CLI prompts for your Codifier server URL (default: `https://codifier-mcp.fly
 - Writes `.mcp.json` (Claude Code) or equivalent client config
 - Verifies MCP connectivity via `GET /health`
 
+#### Cowork (Claude Desktop Plugin)
+
+```bash
+npx codifier init --client cowork
+```
+
+This creates a `.claude-plugin/` directory with `plugin.json` and copies command files with YAML frontmatter (`description`, `argument-hint`) so Cowork registers them in its command dropdown. Install the plugin from your project directory in Claude Desktop.
+
 Alternatively, configure the MCP connection manually:
 
 ```bash
@@ -439,7 +447,7 @@ codifierMcp/
 │   └── research-analyze/
 │       ├── SKILL.md
 │       └── templates/
-├── commands/
+├── commands/                           # Slash commands (YAML frontmatter for Cowork registration)
 │   ├── codify.md                   # /codify slash command
 │   ├── onboard.md                  # /onboard slash command
 │   ├── research.md                 # /research slash command

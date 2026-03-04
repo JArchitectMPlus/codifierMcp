@@ -1,3 +1,7 @@
+---
+description: Sync local learnings to the shared knowledge base
+---
+
 Read and follow the instructions in the push-memory skill. Check these locations in order:
 1. skills/push-memory/SKILL.md
 2. .codifier/skills/push-memory/SKILL.md

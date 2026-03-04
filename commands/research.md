@@ -1,3 +1,8 @@
+---
+description: Discover data schemas, run queries, and synthesize research findings
+argument-hint: "<research objective>"
+---
+
 Read and follow the instructions in the research-analyze skill. Check these locations in order:
 1. skills/research-analyze/SKILL.md
 2. .codifier/skills/research-analyze/SKILL.md

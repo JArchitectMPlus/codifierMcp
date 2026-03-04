@@ -1,3 +1,7 @@
+---
+description: Capture session learnings to local memory
+---
+
 Read and follow the instructions in the capture-session skill. Check these locations in order:
 1. skills/capture-session/SKILL.md
 2. .codifier/skills/capture-session/SKILL.md

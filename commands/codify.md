@@ -1,3 +1,8 @@
+---
+description: Initialize a new project with rules, evals, requirements, and roadmap
+argument-hint: "<project name or description>"
+---
+
 Read and follow the instructions in the initialize-project skill. Check these locations in order:
 1. skills/initialize-project/SKILL.md
 2. .codifier/skills/initialize-project/SKILL.md
