@@ -94,7 +94,7 @@ async function main(): Promise<void> {
       });
     }
 
-    logger.info('Tools available: fetch_context, update_memory, manage_projects, pack_repo, query_data');
+    logger.info('Tools available: fetch_context, update_memory, delete_memory, manage_projects, pack_repo, query_data');
   } catch (error) {
     logger.error('Fatal error during startup', {
       error: error instanceof Error ? error.message : 'Unknown error',
