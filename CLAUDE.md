@@ -24,7 +24,7 @@ The compiled output is placed in `dist/` with `dist/index.js` as the main entry 
 
 ### Three-Layer Architecture (v2.0)
 
-**Layer 1: Remote MCP Server (5 stateless tools)**
+**Layer 1: Remote MCP Server (6 stateless tools)**
 - StreamableHTTP (`/mcp`, POST-only, stateless) as primary; SSE (`/sse`) for legacy clients; stdio for local dev
 - `/mcp` creates a fresh `Server` + `StreamableHTTPServerTransport` per request (`sessionIdGenerator: undefined`) — no session registry, no restart-induced hangs
 - Bearer token auth middleware (swap to Entra ID in v2.1)
@@ -39,7 +39,7 @@ The compiled output is placed in `dist/` with `dist/index.js` as the main entry 
 - Markdown instruction files the LLM reads locally — the LLM is the state machine
 - Three Skills: `initialize-project`, `brownfield-onboard`, `research-analyze`
 - Scaffolded into any project via `npx codifier init`; slash commands activate each Skill
-- Skills call the 5 MCP tools for data operations; no server round-trips for workflow state
+- Skills call the 6 MCP tools for data operations; no server round-trips for workflow state
 - Skills write local copies of generated artifacts to `docs/` **before** remote persistence via `update_memory`
 - `docs/` is created by `npx codifier init`; local files guard the current dev session and serve as offline fallback
 - Remote storage (Supabase) remains the shared source of truth for the team
@@ -48,17 +48,18 @@ The compiled output is placed in `dist/` with `dist/index.js` as the main entry 
 - **RepoMix**: programmatic `pack()` API — npm dependency, no subprocess
 - **AWS Athena**: sidecar subprocess via `StdioClientTransport` inside the container
 
-## MCP Tool Surface (5 Tools)
+## MCP Tool Surface (6 Tools)
 
 | Tool | Description |
 |---|---|
 | `fetch_context` | Retrieve memories filtered by `project_id`, `memory_type`, and/or `tags` |
 | `update_memory` | Create or update a memory (rule, doc, contract, learning, research_finding) |
+| `delete_memory` | Delete a memory by `id` and `project_id` |
 | `manage_projects` | Create, list, or switch active project |
 | `pack_repo` | Condense a repo via RepoMix; store as versioned snapshot in `repositories` |
 | `query_data` | Schema discovery and query execution against Athena (`list-tables`, `describe-tables`, `execute-query`) |
 
-`run_playbook` and `advance_step` were removed in v2.0. The server registers exactly 5 tools.
+`run_playbook` and `advance_step` were removed in v2.0. The server registers exactly 6 tools.
 
 ## Data Storage Strategy
 
@@ -98,11 +99,12 @@ src/
 │   ├── atlassian-datastore.ts  # Confluence implementation (legacy)
 │   └── confluence-client.ts    # Confluence REST API client
 ├── mcp/
-│   ├── server.ts               # Registers exactly 5 tools
+│   ├── server.ts               # Registers exactly 6 tools
 │   ├── schemas.ts              # Zod schemas for tool parameters
-│   └── tools/
+│   └── tools/                  # 6 tool implementations
 │       ├── fetch-context.ts
 │       ├── update-memory.ts
+│       ├── delete-memory.ts
 │       ├── manage-projects.ts
 │       ├── pack-repo.ts
 │       └── query-data.ts
@@ -176,6 +178,6 @@ docs/                             # Local artifact copies (written by skills, cr
 Key constraints:
 - Log to **stderr only** — MCP protocol uses stdout
 - Never add `run_playbook`, `advance_step`, or session-related code — those are permanently removed
-- All tool implementations live in `src/mcp/tools/`; `src/mcp/server.ts` must register exactly 5 tools
+- All tool implementations live in `src/mcp/tools/`; `src/mcp/server.ts` must register exactly 6 tools
 - Validate all inputs with Zod schemas in `src/mcp/schemas.ts`
 - Use custom error classes from `utils/errors.ts`

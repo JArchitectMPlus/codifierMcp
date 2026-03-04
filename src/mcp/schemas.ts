@@ -208,3 +208,21 @@ export const QueryDataParamsSchema = z.object({
 });
 
 export type QueryDataParams = z.infer<typeof QueryDataParamsSchema>;
+
+// ---------------------------------------------------------------------------
+// delete_memory schema
+// ---------------------------------------------------------------------------
+
+export const DeleteMemoryParamsSchema = z.object({
+  id: z
+    .string()
+    .min(1, 'id is required')
+    .describe('UUID of the memory to delete'),
+
+  project_id: z
+    .string()
+    .min(1, 'project_id is required')
+    .describe('The project UUID — used for RLS scoping to ensure the memory belongs to this project'),
+});
+
+export type DeleteMemoryParams = z.infer<typeof DeleteMemoryParamsSchema>;

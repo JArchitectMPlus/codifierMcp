@@ -248,12 +248,38 @@ evaluations:
     reviewer: "MCP Config Schema Fix"
     notes: "Consider adding .mcp.json schema validation to the doctor command as a preventive check"
 
+  - id: "E020"
+    rule_id: "R003"
+    status: "passing"
+    test_case: "delete_memory tool added to MCP tool surface"
+    result: "Server now registers 6 tools including delete_memory. Tool accepts id and project_id, deletes from Supabase with RLS scoping, returns confirmation with deleted title."
+    evidence:
+      - "src/mcp/tools/delete-memory.ts implements handleDeleteMemory"
+      - "src/mcp/schemas.ts defines DeleteMemoryParamsSchema with id and project_id"
+      - "src/datastore/interface.ts adds deleteMemory to IDataStore"
+      - "src/datastore/supabase-datastore.ts implements deleteMemory with .eq('id').eq('project_id')"
+      - "src/mcp/server.ts registers 6 tools including delete_memory case"
+    date: "2026-03-04"
+    reviewer: "Server Optimization Sprint"
+
+  - id: "E021"
+    rule_id: "R003"
+    status: "passing"
+    test_case: "query_data SQL validator accepts CTE/WITH syntax"
+    result: "The SQL safety validator in athena.ts now uses regex /^\\s*(WITH|SELECT)/i instead of startsWith('select'), allowing CTE queries while still blocking DDL/DML."
+    evidence:
+      - "src/integrations/athena.ts:98 uses /^\\s*(WITH|SELECT)/i regex"
+      - "WITH...SELECT (CTEs) now pass validation"
+      - "INSERT, UPDATE, DELETE, CREATE, DROP still rejected"
+    date: "2026-03-04"
+    reviewer: "Server Optimization Sprint"
+
 summary:
-  total_evaluations: 19
-  passing: 16
+  total_evaluations: 21
+  passing: 18
   failing: 0
   needs_validation: 3
-  coverage: "All Phase 1 rules validated; stateless transport fix, PaaS resilience, and MCP config schema rules added"
+  coverage: "All Phase 1 rules validated; stateless transport fix, PaaS resilience, MCP config schema, delete_memory tool, and CTE validator fix added"
   next_steps:
     - "Validate MCP tool schema patterns when server is implemented"
     - "Validate Supabase migration when Phase 2 begins"

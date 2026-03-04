@@ -53,6 +53,10 @@ export interface IDataStore {
     confidence?: number;
     source_role?: string;
   }): Promise<MemoryRow>;
+  deleteMemory(params: {
+    id: string;
+    project_id: string;
+  }): Promise<{ id: string; title: string }>;
 
   // Repositories
   saveRepository(params: {

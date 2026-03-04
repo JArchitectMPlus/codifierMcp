@@ -312,6 +312,50 @@ export class SupabaseDataStore implements IDataStore {
     }
   }
 
+  async deleteMemory(params: {
+    id: string;
+    project_id: string;
+  }): Promise<{ id: string; title: string }> {
+    await this.ensureInitialized();
+
+    try {
+      logger.info('Deleting memory', { id: params.id, project_id: params.project_id });
+
+      const client = this.supabaseClient.getClient();
+
+      // Fetch the record first so we can return the title in the confirmation
+      const { data: existing, error: fetchError } = await client
+        .from('memories')
+        .select('id, title')
+        .eq('id', params.id)
+        .eq('project_id', params.project_id)
+        .single();
+
+      if (fetchError || !existing) {
+        throw new SupabaseError(
+          `Memory not found: no memory with id "${params.id}" in project "${params.project_id}"`
+        );
+      }
+
+      const { error: deleteError } = await client
+        .from('memories')
+        .delete()
+        .eq('id', params.id)
+        .eq('project_id', params.project_id);
+
+      if (deleteError) {
+        throw new SupabaseError(`Failed to delete memory: ${deleteError.message}`);
+      }
+
+      logger.info('Memory deleted', { id: existing.id });
+      return { id: existing.id as string, title: existing.title as string };
+    } catch (error) {
+      if (error instanceof SupabaseError) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new SupabaseError(`Failed to delete memory: ${message}`, error instanceof Error ? error : undefined);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Repositories
   // ---------------------------------------------------------------------------

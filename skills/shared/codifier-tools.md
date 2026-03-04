@@ -1,6 +1,6 @@
 # Codifier MCP Tools Reference
 
-This document describes all 5 MCP tools exposed by the Codifier server. Reference this when executing any Codifier skill.
+This document describes all 6 MCP tools exposed by the Codifier server. Reference this when executing any Codifier skill.
 
 ---
 
@@ -53,7 +53,25 @@ Create a new memory or update an existing one in the shared knowledge base.
 
 ---
 
-## 3. `manage_projects`
+## 3. `delete_memory`
+
+Delete a memory from the shared knowledge base by its ID.
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string (UUID) | ✓ | UUID of the memory to delete |
+| `project_id` | string (UUID) | ✓ | Project scope (must match the memory's project) |
+
+**Returns:** Confirmation with the deleted memory's `id` and `title`.
+
+**Usage patterns:**
+- Delete a stale learning: `{ id: "<memory-uuid>", project_id: "<project-uuid>" }`
+- Clean up duplicates: fetch with `fetch_context`, identify duplicates, delete extras
+
+---
+
+## 4. `manage_projects`
 
 Create, list, or switch the active project.
 
@@ -77,7 +95,7 @@ Create, list, or switch the active project.
 
 ---
 
-## 4. `pack_repo`
+## 5. `pack_repo`
 
 Condense a code repository into a versioned text snapshot using RepoMix. The snapshot is stored in the `repositories` table and can be retrieved for context.
 
@@ -98,7 +116,7 @@ Condense a code repository into a versioned text snapshot using RepoMix. The sna
 
 ---
 
-## 5. `query_data`
+## 6. `query_data`
 
 Discover schemas and execute SELECT queries against an AWS Athena data warehouse.
 
@@ -120,7 +138,7 @@ Discover schemas and execute SELECT queries against an AWS Athena data warehouse
 - Get schema for selected tables: `{ operation: "describe-tables", project_id, table_names: ["events", "users"] }`
 - Execute a query: `{ operation: "execute-query", project_id, query: "SELECT user_id, COUNT(*) FROM events GROUP BY 1 LIMIT 100" }`
 
-**Constraints:** Only SELECT statements are permitted. DDL and DML are rejected.
+**Constraints:** Only SELECT and WITH/CTE statements are permitted. DDL and DML are rejected.
 
 ---
 

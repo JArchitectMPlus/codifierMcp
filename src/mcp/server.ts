@@ -1,7 +1,7 @@
 /**
  * MCP Server implementation for CodifierMcp (v2.0)
  *
- * Transport-agnostic server that registers all 5 MCP tools and
+ * Transport-agnostic server that registers all 6 MCP tools and
  * delegates to the IDataStore abstraction for persistence.
  */
 
@@ -20,6 +20,7 @@ import { UpdateMemoryTool, handleUpdateMemory } from './tools/update-memory.js';
 import { ManageProjectsTool, handleManageProjects } from './tools/manage-projects.js';
 import { PackRepoTool, handlePackRepo } from './tools/pack-repo.js';
 import { QueryDataTool, handleQueryData } from './tools/query-data.js';
+import { DeleteMemoryTool, handleDeleteMemory } from './tools/delete-memory.js';
 
 export interface McpServerConfig {
   name: string;
@@ -41,6 +42,7 @@ export function createMcpServer(config: McpServerConfig): Server {
   const allTools = [
     FetchContextTool,
     UpdateMemoryTool,
+    DeleteMemoryTool,
     ManageProjectsTool,
     PackRepoTool,
     QueryDataTool,
@@ -71,6 +73,9 @@ export function createMcpServer(config: McpServerConfig): Server {
 
         case 'query_data':
           return await handleQueryData(args, config.dataStore);
+
+        case 'delete_memory':
+          return await handleDeleteMemory(args, config.dataStore);
 
         default:
           throw new CodifierError(`Unknown tool: ${name}`);

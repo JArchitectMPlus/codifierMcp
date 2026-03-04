@@ -95,7 +95,7 @@ export class AthenaClient {
     this.assertConnected();
 
     // Enforce SELECT-only queries
-    if (!query.trimStart().toLowerCase().startsWith('select')) {
+    if (!/^\s*(WITH|SELECT)/i.test(query)) {
       throw new CodifierError(
         'Only SELECT queries are permitted. Received: ' + query.slice(0, 100)
       );

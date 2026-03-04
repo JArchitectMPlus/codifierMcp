@@ -59,7 +59,7 @@ rules:
   - id: "R003"
     category: "mcp-protocol"
     title: "MCP Protocol Best Practices"
-    description: "Follow MCP protocol conventions strictly. Use stderr for all logging since stdout is reserved for MCP protocol communication. Define clear tool schemas with proper validation. The server exposes exactly 5 tools: fetch_context, update_memory, manage_projects, pack_repo, query_data."
+    description: "Follow MCP protocol conventions strictly. Use stderr for all logging since stdout is reserved for MCP protocol communication. Define clear tool schemas with proper validation. The server exposes exactly 6 tools: fetch_context, update_memory, delete_memory, manage_projects, pack_repo, query_data."
     confidence: 1.0
     patterns:
       - "Use console.error (stderr) for all logging, never console.log (stdout)"
@@ -73,7 +73,7 @@ rules:
       - "Missing input validation in tool handlers"
       - "Not handling MCP transport errors gracefully"
       - "Exposing internal error details to MCP clients"
-      - "Adding tools beyond the 5 defined in the v2.0 surface (fetch_context, update_memory, manage_projects, pack_repo, query_data)"
+      - "Adding tools beyond the 6 defined in the tool surface (fetch_context, update_memory, delete_memory, manage_projects, pack_repo, query_data)"
     examples:
       - "Good: logger.error() uses console.error for MCP compatibility"
       - "Bad: console.log('Debug info') breaks MCP communication"

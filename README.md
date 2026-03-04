@@ -71,10 +71,10 @@ This creates a virtuous cycle where knowledge from a developer's session informs
 │   CodifierMcp Server                    │
 │   ├── Transport: stdio | SSE            │
 │   ├── Auth: Bearer token middleware     │
-│   └── MCP Tools (5)                     │
+│   └── MCP Tools (6)                     │
 │       fetch_context / update_memory     │
-│       manage_projects / pack_repo       │
-│       query_data                        │
+│       delete_memory / manage_projects   │
+│       pack_repo / query_data            │
 └──────┬──────────────────────────────────┘
        │
   ┌────┴────────────────────────────────┐
@@ -261,15 +261,16 @@ Configure as a StreamableHTTP server at `https://codifier-mcp.fly.dev/mcp` with 
 
 ## MCP Tools
 
-Codifier exposes 5 tools via the MCP protocol:
+Codifier exposes 6 tools via the MCP protocol:
 
 | Tool | Description |
 |------|-------------|
 | `fetch_context` | Retrieve memories from the KB filtered by `project_id`, `memory_type` (rule, document, api_contract, learning, research_finding), and/or `tags` |
 | `update_memory` | Create or update a memory within the active project scope |
+| `delete_memory` | Delete a memory by `id` and `project_id` |
 | `manage_projects` | Create, list, or switch the active project; all subsequent calls are scoped to it |
 | `pack_repo` | Condense a local or remote repository via RepoMix and store it as a versioned snapshot in the `repositories` table |
-| `query_data` | Execute operations against Athena: `list-tables` (schema discovery), `describe-tables` (column metadata), `execute-query` (SELECT only). Accepts optional `database` parameter to override the `ATHENA_DATABASE` env var per call. |
+| `query_data` | Execute operations against Athena: `list-tables` (schema discovery), `describe-tables` (column metadata), `execute-query` (SELECT and WITH/CTE queries permitted). Accepts optional `database` parameter to override the `ATHENA_DATABASE` env var per call. |
 
 ### Memory Types
 
@@ -289,7 +290,7 @@ Skills are client-side, model-agnostic Agent workflows — markdown instruction 
 
 After running `npx codifier init`, Skills live in `.codifier/skills/` in your project. Slash commands in `.claude/commands/` (or the equivalent for your client) activate each Skill.
 
-`skills/shared/codifier-tools.md` is a reference document covering all 5 MCP tools, their parameters, and usage patterns. Every Skill references it.
+`skills/shared/codifier-tools.md` is a reference document covering all 6 MCP tools, their parameters, and usage patterns. Every Skill references it.
 
 ### Memory Skills (All Roles)
 
@@ -405,11 +406,12 @@ codifierMcp/
 │   │   ├── supabase-datastore.ts   # Supabase implementation (default)
 │   │   └── atlassian-datastore.ts  # Confluence implementation (legacy)
 │   ├── mcp/
-│   │   ├── server.ts               # Registers exactly 5 tools
+│   │   ├── server.ts               # Registers exactly 6 tools
 │   │   ├── schemas.ts              # Zod schemas for tool parameters
-│   │   └── tools/                  # 5 tool implementations
+│   │   └── tools/                  # 6 tool implementations
 │   │       ├── fetch-context.ts
 │   │       ├── update-memory.ts
+│   │       ├── delete-memory.ts
 │   │       ├── manage-projects.ts
 │   │       ├── pack-repo.ts
 │   │       └── query-data.ts
@@ -509,7 +511,7 @@ The original v2.0 design used a server-side `PlaybookRunner` state machine with 
 
 1. **Eliminating round-trips**: Each playbook step required an MCP call. Skills let the LLM manage workflow state in its context window — zero extra tool calls for step transitions.
 2. **Model agnosticism**: Skill markdown files work with any LLM client. The YAML playbook format tied generation to Codifier's server-side prompt assembly.
-3. **Simplified server**: 5 stateless tools are easier to reason about, test, and scale. The Fly.io deployment runs always-on (`min_machines_running = 1`, `auto_stop_machines = false`) — no cold-start delay for clients.
+3. **Simplified server**: 6 stateless tools are easier to reason about, test, and scale. The Fly.io deployment runs always-on (`min_machines_running = 1`, `auto_stop_machines = false`) — no cold-start delay for clients.
 
 ---
 

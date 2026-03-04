@@ -358,6 +358,15 @@ export class AtlassianDataStore implements IDataStore {
     );
   }
 
+  async deleteMemory(_params: {
+    id: string;
+    project_id: string;
+  }): Promise<{ id: string; title: string }> {
+    throw new DataStoreError(
+      'deleteMemory is not supported by AtlassianDataStore. Set DATA_STORE=supabase.'
+    );
+  }
+
   /**
    * Ensure the parent page for insights exists
    * Creates it if it doesn't exist
