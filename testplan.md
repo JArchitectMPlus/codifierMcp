@@ -304,7 +304,8 @@ After `npx @codifier/cli init` completes from Section 2.1:
    {
      "mcpServers": {
        "codifier": {
-         "url": "https://codifier-mcp.fly.dev/sse",
+         "type": "http",
+         "url": "https://codifier-mcp.fly.dev/mcp",
          "headers": {
            "Authorization": "Bearer <your-api-key>"
          }
@@ -312,13 +313,13 @@ After `npx @codifier/cli init` completes from Section 2.1:
      }
    }
    ```
-   Verify that the `url` field ends in `/sse` (not bare `/`), and that the `Authorization` header value starts with `Bearer `.
+   Verify that the config includes `type: "http"`, the `url` field ends in `/mcp` (not `/sse` or bare `/`), and the `Authorization` header value starts with `Bearer `.
 
 ---
 
 ## Section 3 — Tool Registration Verification
 
-These tests confirm that the MCP server exposes exactly 5 tools and that the removed tools (`run_playbook`, `advance_step`) are absent.
+These tests confirm that the MCP server exposes exactly 6 tools and that the removed tools (`run_playbook`, `advance_step`) are absent.
 
 ### 3.1 Verify tool count and names via the SSE endpoint
 
@@ -346,13 +347,13 @@ This test sends an MCP `tools/list` request to the live remote server and inspec
    ```
    grep -n "case '" /Users/jeff.akpunonu/dev/nodejs/codifierMcp/src/mcp/server.ts
    ```
-   Expected output: exactly 5 `case` entries — `fetch_context`, `update_memory`, `manage_projects`, `pack_repo`, `query_data`. No `run_playbook` or `advance_step` lines.
+   Expected output: exactly 6 `case` entries — `fetch_context`, `update_memory`, `delete_memory`, `manage_projects`, `pack_repo`, `query_data`. No `run_playbook` or `advance_step` lines.
 
 4. Verify the `allTools` array in the compiled output:
    ```
    grep -c "Tool," /Users/jeff.akpunonu/dev/nodejs/codifierMcp/src/mcp/server.ts
    ```
-   Expected: `5` (one entry per tool in `allTools`).
+   Expected: `6` (one entry per tool in `allTools`).
 
 5. Confirm removed tools are absent from the entire `src/` tree:
    ```
@@ -368,7 +369,7 @@ If you have a local MCP client (e.g., Claude Code with Codifier configured via `
 
 1. Open Claude Code in the test project created in Section 2.
 2. In the chat, ask: "List all tools available from the Codifier MCP server."
-3. Expected outcome: Claude responds with exactly 5 tool names — `fetch_context`, `update_memory`, `manage_projects`, `pack_repo`, `query_data`. No other Codifier tools should appear.
+3. Expected outcome: Claude responds with exactly 6 tool names — `fetch_context`, `update_memory`, `delete_memory`, `manage_projects`, `pack_repo`, `query_data`. No other Codifier tools should appear.
 
 ---
 
@@ -467,7 +468,7 @@ This test requires two machines (or two distinct user accounts) both connected t
 
 **User A (Machine 1):**
 
-1. Ensure `npx @codifier/cli init` has been completed and `.mcp.json` points to `https://codifier-mcp.fly.dev/sse`.
+1. Ensure `npx @codifier/cli init` has been completed and `.mcp.json` points to `https://codifier-mcp.fly.dev/mcp`.
 2. In Claude Code, call `update_memory` for project `codifier-demo` with:
    - `memory_type`: `learning`
    - `title`: `Persistence smoke test`
@@ -588,24 +589,25 @@ After init completes via either 4B.1 or 4B.2, inspect the created files. The Cow
 2. Expected outcome — Claude confirms the following structure:
    - `skills/` folder at the project root containing: `initialize-project/`, `brownfield-onboard/`, `research-analyze/`, `shared/`
    - Each skill folder (`initialize-project`, `brownfield-onboard`, `research-analyze`) contains a `SKILL.md` file
-   - `commands/` folder at the project root containing: `codify.md`, `onboard.md`, `research.md`
+   - `commands/` folder at the project root containing: `codify.md`, `onboard.md`, `research.md`, `remember.md`, `push-memory.md`, `recall.md`
    - `.claude-plugin/` folder containing only `plugin.json` (no nested `skills/` or `commands/` inside it)
    - `.mcp.json` at the project root with the Codifier server URL and auth header
    - `.codifier/config.json` with the saved server URL and API key
    - `docs/` folder created for local artifact storage
 
 3. Ask Claude: **"Open `.claude-plugin/plugin.json` and show me the contents."**
-4. Expected: valid JSON with `name`, `version`, and `description` fields:
+4. Expected: valid JSON with `name`, `version`, `description`, and `author` fields:
    ```json
    {
      "name": "codifier",
-     "version": "2.0.5",
-     "description": "Institutional memory for AI-driven development"
+     "version": "2.1.5",
+     "description": "Institutional memory for AI-driven development",
+     "author": { "name": "Codifier" }
    }
    ```
 
-5. Ask Claude: **"Open `.mcp.json` and confirm the server URL ends in `/sse`."**
-6. Expected: the `url` field is `https://codifier-mcp.fly.dev/sse` and the `Authorization` header starts with `Bearer `.
+5. Ask Claude: **"Open `.mcp.json` and confirm the server URL ends in `/mcp`."**
+6. Expected: the `url` field is `https://codifier-mcp.fly.dev/mcp`, the config includes `type: "http"`, and the `Authorization` header starts with `Bearer `.
 
 ---
 
@@ -623,23 +625,27 @@ This verifies the doctor command works in a Cowork context and confirms that the
 
 ---
 
-### 4B.5 Slash commands work — `/codify` triggers the Initialize Project skill
+### 4B.5 Commands appear in Cowork dropdown and `/codify` triggers the Initialize Project skill
 
-This is the core user experience test: a Cowork user types a slash command and the skill activates using the project-root `skills/` path.
+This is the core user experience test: commands appear in the Cowork command dropdown (enabled by YAML frontmatter in each `.md` file), and a Cowork user types a slash command and the skill activates using the project-root `skills/` path.
 
-1. In Claude Desktop (same Cowork session), type `/codify`.
+1. In Claude Desktop (same Cowork session), open the command dropdown (type `/`).
 2. Expected outcome:
+   - All 6 Codifier commands appear in the dropdown with their descriptions (e.g., `/codify` shows "Initialize a new project with rules, evals, requirements, and roadmap")
+   - Commands with `argument-hint` show the hint text (e.g., `/codify` shows `<project name or description>`)
+3. Select `/codify` from the dropdown.
+4. Expected outcome:
    - Claude reads `skills/initialize-project/SKILL.md` from the project root and begins the Initialize Project workflow
    - Claude asks for a project name, description, and context (Statement of Work or equivalent)
    - Claude does **not** report "Codifier skills are not installed" or fail to find the SKILL.md file
    - The Codifier MCP tools (`manage_projects`, `update_memory`, etc.) are available and callable from the chat
 
-3. Provide test inputs when prompted:
+5. Provide test inputs when prompted:
    - Project name: `cowork-test`
    - Description: `Testing Codifier from Cowork in Claude Desktop`
    - SOW: a short sentence about the project
-4. Let Claude generate at least one artifact (e.g., Rules.md) to confirm the full pipeline works end-to-end through the Cowork interface.
-5. Expected: the artifact is generated in the conversation and Claude calls `update_memory` to persist it. No tool-not-found errors.
+6. Let Claude generate at least one artifact (e.g., Rules.md) to confirm the full pipeline works end-to-end through the Cowork interface.
+7. Expected: the artifact is generated in the conversation and Claude calls `update_memory` to persist it. No tool-not-found errors.
 
 ---
 
@@ -817,14 +823,14 @@ Run through this checklist after completing the above sections. Each item maps t
 | 9 | Cross-role demo: `fetch_context` returns researcher's `research_finding` memories to a developer session | Section 4.5 | |
 | 10 | Persistence demo: memory created by user A is retrievable by user B on a separate machine via SSE | Section 4.6 | |
 | 11 | Remote access: SSE endpoint returns 200 with valid API key, 401 without | Section 4.7 | |
-| 12 | Exactly 5 tools registered — `run_playbook` and `advance_step` absent | Section 3.1 | |
+| 12 | Exactly 6 tools registered — `run_playbook` and `advance_step` absent | Section 3.1 | |
 | 13 | UX metric: Initialize Project flow completes with 5 or fewer MCP tool calls | Section 4.8 | |
 | 14 | Cowork: setup via Cowork Settings instructions (direct-write path) produces correct file layout | Section 4B.1 | |
 | 15 | Cowork: `codifier init --client cowork --url ... --key ...` completes non-interactively | Section 4B.2 | |
 | 16 | Cowork: non-TTY init with no key prints error and exits (no hang) | Section 4B.2 | |
-| 17 | Cowork: file layout matches spec — `skills/` and `commands/` at root, only `plugin.json` in `.claude-plugin/` | Section 4B.3 | |
+| 17 | Cowork: file layout matches spec — `skills/` and `commands/` at root, only `plugin.json` (with `author` field) in `.claude-plugin/` | Section 4B.3 | |
 | 18 | Cowork: `codifier doctor` passes all checks | Section 4B.4 | |
-| 19 | Cowork: `/codify` slash command triggers the Initialize Project skill and persists artifacts | Section 4B.5 | |
+| 19 | Cowork: all 6 commands appear in dropdown with descriptions; `/codify` triggers the Initialize Project skill and persists artifacts | Section 4B.5 | |
 | 20 | Cowork: re-running `init` is idempotent and does not break the project | Section 4B.6 | |
 | 21 | `npx codifier init` creates `docs/MEMORY.md` with placeholder header | Section 2.2, 4C.10 | |
 | 22 | `/remember` captures structured learnings to `docs/MEMORY.md` without MCP calls | Section 4C.1 | |
