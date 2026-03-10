@@ -13,7 +13,18 @@ const SKILLS_SOURCE = join(PACKAGE_ROOT, 'skills');
 
 export async function runAdd(skillName: string): Promise<void> {
   const cwd = process.cwd();
+  const configPath = join(cwd, '.codifier', 'config.json');
+
   const env = detectEnvironment(cwd);
+
+  // Guard: not initialized if generic layout and no config.json
+  if (env.clientType === 'generic' && !existsSync(configPath)) {
+    console.error(
+      'Error: Codifier is not initialized in this directory. Run `codifier init` first.'
+    );
+    process.exit(1);
+  }
+
   const skillSource = join(SKILLS_SOURCE, skillName);
 
   if (!existsSync(skillSource)) {

@@ -7,7 +7,14 @@ import { mkdirSync, cpSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as readline from 'readline';
-import { detectEnvironment, type ClientType } from './detect.js';
+import {
+  detectEnvironment,
+  detectExistingClient,
+  detectAllClients,
+  buildEnvironment,
+  CodifierConfigSchema,
+  type ClientType,
+} from './detect.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +23,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, '..', '..');
 const SKILLS_SOURCE = join(PACKAGE_ROOT, 'skills');
 const COMMANDS_SOURCE = join(PACKAGE_ROOT, 'commands');
+
+const CLIENT_MENU: Array<{ label: string; value: ClientType }> = [
+  { label: 'Claude Code (Anthropic)', value: 'claude-code' },
+  { label: 'Cursor', value: 'cursor' },
+  { label: 'Windsurf', value: 'windsurf' },
+  { label: 'Google Gemini CLI', value: 'gemini' },
+  { label: 'OpenAI Codex / GPT', value: 'codex' },
+  { label: 'Cowork (Claude Code plugin)', value: 'cowork' },
+  { label: 'Other / None (use generic .codifier/ layout)', value: 'generic' },
+];
 
 function prompt(question: string): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -27,11 +44,93 @@ function prompt(question: string): Promise<string> {
   });
 }
 
+/**
+ * Interactive numbered menu for selecting the LLM client.
+ * Only called when stdin is a TTY and CI is not set.
+ */
+async function promptForClient(): Promise<ClientType> {
+  console.log('\nWhich LLM client are you using?');
+  CLIENT_MENU.forEach((entry, idx) => {
+    console.log(`  ${idx + 1}. ${entry.label}`);
+  });
+  console.log('');
+
+  const answer = await prompt(`Enter a number [1-${CLIENT_MENU.length}]: `);
+  const num = parseInt(answer, 10);
+  if (num >= 1 && num <= CLIENT_MENU.length) {
+    return CLIENT_MENU[num - 1].value;
+  }
+
+  console.warn('Invalid selection — defaulting to generic layout.');
+  return 'generic';
+}
+
 export async function runInit(clientOverride?: ClientType, urlFlag?: string, keyFlag?: string): Promise<void> {
   const cwd = process.cwd();
-  const env = detectEnvironment(cwd, clientOverride);
+  const configDir = join(cwd, '.codifier');
+  const configPath = join(configDir, 'config.json');
+  const isInteractive = process.stdin.isTTY && !process.env['CI'];
 
-  console.log(`\nCodifier Init — detected client: ${env.clientType}\n`);
+  // Re-run safety: warn if already initialized
+  if (existsSync(configPath)) {
+    try {
+      const raw: unknown = JSON.parse(readFileSync(configPath, 'utf8'));
+      const existing = CodifierConfigSchema.parse(raw);
+      const when = existing.installedAt
+        ? ` (installed ${existing.installedAt.split('T')[0]})`
+        : '';
+      console.warn(
+        `\nWarning: Codifier is already initialized in this directory${when}.`
+      );
+      if (existing.clientType) {
+        console.warn(`Existing client type: ${existing.clientType}`);
+      }
+      if (isInteractive) {
+        const confirm = await prompt('Overwrite existing configuration? [y/N]: ');
+        if (!confirm.toLowerCase().startsWith('y')) {
+          console.log('Aborted — no changes made.');
+          return;
+        }
+      } else {
+        console.warn('Non-interactive mode: proceeding with overwrite.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`Warning: Could not parse existing config.json — ${msg}`);
+    }
+  }
+
+  // Resolve client type (3-step priority)
+  let clientType: ClientType;
+
+  if (clientOverride) {
+    clientType = clientOverride;
+    console.log(`\nUsing specified client: ${clientType}`);
+  } else {
+    const allDetected = detectAllClients(cwd);
+    const firstDetected = detectExistingClient(cwd);
+
+    if (firstDetected !== null) {
+      if (allDetected.length > 1) {
+        console.warn(
+          `\nNotice: Multiple LLM client directories detected: ${allDetected.join(', ')}.`
+        );
+        console.warn(`Using first match: ${firstDetected}`);
+      } else {
+        console.log(`\nDetected: ${firstDetected}`);
+      }
+      clientType = firstDetected;
+    } else if (isInteractive) {
+      clientType = await promptForClient();
+    } else {
+      console.warn('\nNon-interactive mode: no client detected — using generic layout.');
+      clientType = 'generic';
+    }
+  }
+
+  const env = buildEnvironment(cwd, clientType);
+
+  console.log(`\nCodifier Init — client: ${env.clientType}\n`);
 
   // 1. Copy skills to the client-appropriate location
   mkdirSync(env.skillsDir, { recursive: true });
@@ -70,25 +169,31 @@ export async function runInit(clientOverride?: ClientType, urlFlag?: string, key
 
   // 3. Resolve server URL and API key: flags → env vars → interactive prompt → default/error
   const DEFAULT_SERVER_URL = 'https://codifier-mcp.fly.dev';
-  const serverUrl = urlFlag
-    || process.env.CODIFIER_SERVER_URL
-    || (process.stdin.isTTY ? await prompt(`Codifier MCP server URL [${DEFAULT_SERVER_URL}]: `) : '')
-    || DEFAULT_SERVER_URL;
+  const serverUrl =
+    urlFlag ||
+    process.env['CODIFIER_SERVER_URL'] ||
+    (isInteractive ? await prompt(`Codifier MCP server URL [${DEFAULT_SERVER_URL}]: `) : '') ||
+    DEFAULT_SERVER_URL;
 
-  const apiKey = keyFlag
-    || process.env.CODIFIER_API_KEY
-    || (process.stdin.isTTY ? await prompt('Codifier API key: ') : '');
+  const apiKey =
+    keyFlag ||
+    process.env['CODIFIER_API_KEY'] ||
+    (isInteractive ? await prompt('Codifier API key: ') : '');
 
   if (!apiKey) {
     console.error('Error: No API key provided. Use --key <key> or set CODIFIER_API_KEY.');
     process.exit(1);
   }
 
-  // 4. Write .codifier/config.json
-  const configDir = join(cwd, '.codifier');
+  // 4. Write .codifier/config.json (includes clientType for future detection)
   mkdirSync(configDir, { recursive: true });
-  const config = { serverUrl, apiKey, installedAt: new Date().toISOString() };
-  writeFileSync(join(configDir, 'config.json'), JSON.stringify(config, null, 2));
+  const config = {
+    clientType,
+    serverUrl,
+    apiKey,
+    installedAt: new Date().toISOString(),
+  };
+  writeFileSync(configPath, JSON.stringify(config, null, 2));
   console.log('✓ Config saved to .codifier/config.json');
 
   // 4b. Create docs/ directory for local artifact copies
@@ -156,7 +261,9 @@ function getPackageVersion(): string {
     const pkgPath = join(PACKAGE_ROOT, 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string };
     return pkg.version;
-  } catch {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`Warning: Could not read package.json version — ${msg}`);
     return '2.0.0';
   }
 }

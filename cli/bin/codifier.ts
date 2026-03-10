@@ -11,6 +11,26 @@ import { runAdd } from '../add.js';
 import { runDoctor } from '../doctor.js';
 import type { ClientType } from '../detect.js';
 
+const VALID_CLIENT_TYPES: ClientType[] = [
+  'claude-code',
+  'cowork',
+  'cursor',
+  'windsurf',
+  'gemini',
+  'codex',
+  'generic',
+];
+
+function validateClientType(value: string): ClientType {
+  if (!(VALID_CLIENT_TYPES as string[]).includes(value)) {
+    console.error(
+      `Error: Invalid --client value "${value}". Valid values: ${VALID_CLIENT_TYPES.join(', ')}`
+    );
+    process.exit(1);
+  }
+  return value as ClientType;
+}
+
 program
   .name('codifier')
   .description('Codifier MCP — install and manage AI skills for your project')
@@ -19,11 +39,15 @@ program
 program
   .command('init')
   .description('Scaffold Codifier skills, slash commands, and MCP config into this project')
-  .option('--client <type>', 'Override client detection (claude-code, cowork, cursor, windsurf)')
+  .option(
+    '--client <type>',
+    `Override client detection (${VALID_CLIENT_TYPES.join(', ')})`
+  )
   .option('--url <serverUrl>', 'MCP server URL (skips interactive prompt)')
   .option('--key <apiKey>', 'Codifier API key (skips interactive prompt)')
   .action(async (opts: { client?: string; url?: string; key?: string }) => {
-    await runInit(opts.client as ClientType | undefined, opts.url, opts.key);
+    const clientType = opts.client ? validateClientType(opts.client) : undefined;
+    await runInit(clientType, opts.url, opts.key);
   });
 
 program
@@ -43,9 +67,13 @@ program
 program
   .command('doctor')
   .description('Verify MCP connectivity and check installed skill files')
-  .option('--client <type>', 'Override client detection (claude-code, cowork, cursor, windsurf)')
+  .option(
+    '--client <type>',
+    `Override client detection (${VALID_CLIENT_TYPES.join(', ')})`
+  )
   .action(async (opts: { client?: string }) => {
-    await runDoctor(opts.client as ClientType | undefined);
+    const clientType = opts.client ? validateClientType(opts.client) : undefined;
+    await runDoctor(clientType);
   });
 
 program.parseAsync(process.argv).catch((err: Error) => {
