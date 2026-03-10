@@ -248,9 +248,14 @@ function buildMcpConfig(serverUrl: string, apiKey: string): Record<string, unkno
   return {
     mcpServers: {
       codifier: {
-        type: 'http',
-        url: `${serverUrl}/mcp`,
-        headers: { Authorization: `Bearer ${apiKey}` },
+        command: 'npx',
+        args: [
+          '-y',
+          'mcp-remote',
+          `${serverUrl}/mcp`,
+          '--header',
+          `Authorization:Bearer ${apiKey}`,
+        ],
       },
     },
   };
