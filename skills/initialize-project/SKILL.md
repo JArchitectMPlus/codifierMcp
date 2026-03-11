@@ -39,14 +39,26 @@ Gather the following from the user in a single conversational turn:
 
 Confirm you have understood all provided context before proceeding.
 
-### Step 3 — Pack Repositories (if URLs provided)
+### Step 3 — Understand the Codebase
 
-For each repository URL provided:
+**If working in a local repo** (the common case), explore the codebase directly using your file access tools:
+
+1. Read the project manifest (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `pom.xml`, etc.) to identify the tech stack, dependencies, and scripts
+2. Read configuration files (`tsconfig.json`, `.eslintrc`, `ruff.toml`, `Dockerfile`, CI configs, etc.) to identify existing conventions and tooling
+3. List the top-level directory structure and key subdirectories to understand the architecture
+4. Read `README.md` or similar docs if present for project purpose and setup
+5. Sample 2–3 representative source files to observe coding patterns, naming conventions, and testing approach
+6. Summarize your findings to the user: tech stack, architecture pattern, key conventions, and anything notable
+
+This local discovery directly informs the rules, evals, and other artifacts generated in later steps.
+
+**If remote repository URLs were provided** (e.g., a related service repo not available locally):
+
 1. Call `pack_repo` with the URL, `project_id`, and a `version_label` (use the current date or sprint label, e.g., `"2026-02"`)
 2. Note the returned `repository_id` and `token_count`
 3. Inform the user: "Packed `<repo-url>` — `<N>` tokens"
 
-If no URLs were provided, skip this step.
+Do not pass local filesystem paths to `pack_repo` — the server runs remotely and cannot access them.
 
 ### Step 4 — Fetch Existing Context
 

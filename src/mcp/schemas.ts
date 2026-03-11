@@ -162,7 +162,7 @@ export const PackRepoParamsSchema = z.object({
   url: z
     .string()
     .min(1, 'url is required')
-    .describe('Repository URL or local path to pack with RepoMix'),
+    .describe('Remote repository URL (https://... or git@...)'),
 
   project_id: z
     .string()

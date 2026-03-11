@@ -48,18 +48,31 @@ If the file exists, scan for entries relevant to the repositories being onboarde
 
 Note: This is a local file read — no MCP call required.
 
-### Step 4 — Pack Repositories
+### Step 4 — Understand the Codebase
 
-For each repository URL:
+**If working in the local repo being onboarded** (the common case), explore the codebase directly using your file access tools:
+
+1. Read the project manifest (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `pom.xml`, etc.) to identify the tech stack, dependencies, and scripts
+2. Read configuration files (`tsconfig.json`, `.eslintrc`, `ruff.toml`, `Dockerfile`, CI configs, etc.) to identify existing conventions and tooling
+3. List the top-level directory structure and key subdirectories (`src/`, `lib/`, `app/`, `tests/`, etc.) to understand the module structure
+4. Read `README.md` or similar docs if present for project purpose and setup
+5. Sample 3–5 representative source files across different modules to observe coding patterns, naming conventions, error handling, and testing approach
+6. Check for existing architectural docs, ADRs, or design notes in `docs/`
+7. Summarize your findings to the user before proceeding to the architectural summary
+
+This local discovery is the primary input for the architectural summary in Step 5.
+
+**If remote repository URLs were also provided** (e.g., related service repos not available locally):
+
 1. Call `pack_repo` with the URL, `project_id`, and a `version_label` (use current date: `"YYYY-MM"` or a tag like `"initial-onboard"`)
 2. Note the returned `repository_id`, `token_count`, and `file_count`
 3. Inform the user: "Packed `<repo-url>` — `<N>` files, `<M>` tokens"
 
-If a pack fails, log the error and continue with remaining repos.
+Do not pass local filesystem paths to `pack_repo` — the server runs remotely and cannot access them. If a remote pack fails, log the error and continue with remaining repos.
 
 ### Step 5 — Generate Architectural Summary
 
-Using the packed repository content (available in your context from the pack results) and any prior memories, generate a comprehensive architectural summary covering:
+Using your codebase exploration from Step 4 (and any packed remote repo content) along with prior memories, generate a comprehensive architectural summary covering:
 
 1. **System Overview** — what the system does, its primary users, and its business purpose
 2. **Technology Stack** — languages, frameworks, databases, infrastructure

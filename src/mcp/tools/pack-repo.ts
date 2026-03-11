@@ -12,15 +12,16 @@ import { packRepository } from '../../integrations/repomix.js';
 export const PackRepoTool = {
   name: 'pack_repo',
   description:
-    'Condense a repository into a versioned text snapshot using RepoMix. ' +
-    'Accepts a remote URL (GitHub, etc.) or local path. ' +
+    'Condense a remote repository into a versioned text snapshot using RepoMix. ' +
+    'Accepts a remote Git URL only (https:// or git@). ' +
+    'Do NOT use this for the local/current repo — you already have direct file access. ' +
     'The snapshot is stored in the repositories table and is available for future context retrieval.',
   inputSchema: {
     type: 'object',
     properties: {
       url: {
         type: 'string',
-        description: 'Repository URL (https://github.com/org/repo) or local path',
+        description: 'Remote repository URL (e.g., https://github.com/org/repo or git@github.com:org/repo)',
       },
       project_id: {
         type: 'string',
@@ -43,6 +44,16 @@ export async function handlePackRepo(
     logger.debug('pack_repo called', params);
 
     const validated: PackRepoParams = PackRepoParamsSchema.parse(params);
+
+    // Reject local paths — server runs remotely on Fly.io
+    const isRemoteUrl = validated.url.startsWith('http://') || validated.url.startsWith('https://') || validated.url.startsWith('git@');
+    if (!isRemoteUrl) {
+      throw new McpToolError(
+        `pack_repo only accepts remote Git URLs. Received "${validated.url}" which appears to be a local path. ` +
+        `You do not need to pack the current repo — you already have direct file access.`,
+        'pack_repo'
+      );
+    }
 
     logger.info('Packing repository', {
       url: validated.url,

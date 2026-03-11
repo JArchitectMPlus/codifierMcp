@@ -97,22 +97,22 @@ Create, list, or switch the active project.
 
 ## 5. `pack_repo`
 
-Condense a code repository into a versioned text snapshot using RepoMix. The snapshot is stored in the `repositories` table and can be retrieved for context.
+Condense a **remote** repository into a versioned text snapshot using RepoMix. The snapshot is stored in the `repositories` table and can be retrieved for context.
 
 **Parameters:**
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `url` | string | ✓ | Repository URL (e.g., `https://github.com/org/repo`) or local path |
+| `url` | string | ✓ | Remote repository URL (e.g., `https://github.com/org/repo` or `git@github.com:org/repo`) |
 | `project_id` | string (UUID) | ✓ | Project to associate the snapshot with |
 | `version_label` | string | — | Version label for this snapshot (e.g., `"v1.2.3"`, `"sprint-5"`, `"2026-02"`) |
 
 **Returns:** Repository record with `id`, `url`, `version_label`, `token_count`, `file_count`, and `created_at`.
 
 **Usage patterns:**
-- Pack a public GitHub repo: `{ url: "https://github.com/org/repo", project_id, version_label: "2026-02" }`
+- Pack a remote GitHub repo: `{ url: "https://github.com/org/repo", project_id, version_label: "2026-02" }`
 - Pack multiple repos for brownfield onboarding: call once per repo URL
 
-**Note:** Large repos may take 30–60 seconds. The packed snapshot is plain text suitable for LLM context.
+**Important:** Do **not** use `pack_repo` for the current/local repo. The server runs remotely and cannot access local filesystems. You already have direct file access to the current repo — use your file reading tools instead. Only use `pack_repo` for remote repos you need to pull in for context.
 
 ---
 
