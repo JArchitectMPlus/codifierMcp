@@ -53,14 +53,15 @@ This creates a virtuous cycle where knowledge from a developer's session informs
 
 4. **Guided friction reduction via Skills** — Role-specific conversational workflows. Developers get project initialization with rules and roadmaps. Researchers get data discovery and synthesis. The LLM reads the Skill and guides the conversation — no choppy step-by-step protocol.
 
-5. **Multi-surface access** — IDE via MCP (Cursor, Claude Code, Claude Desktop). CLI installer (`npx codifier init`). Future: Teams bot.
+5. **Multi-surface access** — IDE via MCP (Claude Code, Cursor, Claude Desktop, Windsurf, Gemini, Codex, Cowork). CLI installer (`npx codifier init`). Future: Teams bot.
 
 ### Architecture
 
 ```
 ┌──────────────────────────────────────────────────────┐
 │   MCP Clients                                        │
-│   (Claude Desktop, Cursor, Claude Code)              │
+│   (Claude Code, Cursor, Claude Desktop, Windsurf,    │
+│    Gemini, Codex, Cowork)                             │
 │                                                      │
 │   Skills + docs/MEMORY.md       ← npx codifier init  │
 │   Slash Commands (.claude/commands/ or .cursor/rules/)│
@@ -69,7 +70,7 @@ This creates a virtuous cycle where knowledge from a developer's session informs
        ↓                          ↓
 ┌─────────────────────────────────────────┐
 │   CodifierMcp Server                    │
-│   ├── Transport: stdio | SSE            │
+│   ├── Transport: stdio | StreamableHTTP | SSE │
 │   ├── Auth: Bearer token middleware     │
 │   └── MCP Tools (6)                     │
 │       fetch_context / update_memory     │
@@ -108,7 +109,7 @@ This creates a virtuous cycle where knowledge from a developer's session informs
 No local setup required. You need:
 
 1. **API auth token** — obtain from your Codifier deployment admin
-2. **MCP-compatible AI client** — Claude Desktop, Cursor, or Claude Code CLI
+2. **MCP-compatible AI client** — Claude Code, Cursor, Claude Desktop, Windsurf, Gemini, Codex, or Cowork
 
 **Install Skills and MCP config in one command:**
 ```bash
@@ -210,7 +211,7 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=xxxx
 AWS_SECRET_ACCESS_KEY=xxxx
 ATHENA_S3_OUTPUT_LOCATION=s3://your-bucket/athena-results/
-ATHENA_DATABASE=default
+ATHENA_DATABASE=dev_stage_mfour
 ATHENA_WORKGROUP=primary
 ```
 
@@ -224,7 +225,7 @@ ATHENA_WORKGROUP=primary
 | `API_AUTH_TOKEN` | When `http` | Bearer token for authentication |
 | `GITHUB_TOKEN` | For private repos | GitHub PAT with repo read access |
 | `AWS_*` / `ATHENA_*` | For Research & Analyze | AWS credentials and Athena config |
-| `ATHENA_DATABASE` | No | Athena database/catalog name (default: `"default"`); overridable per `query_data` call |
+| `ATHENA_DATABASE` | No | Athena database/catalog name (default: `"dev_stage_mfour"`); overridable per `query_data` call |
 
 ### MCP Client Configuration
 
@@ -277,7 +278,7 @@ Codifier exposes 6 tools via the MCP protocol:
 | `update_memory` | Create or update a memory within the active project scope |
 | `delete_memory` | Delete a memory by `id` and `project_id` |
 | `manage_projects` | Create, list, or switch the active project; all subsequent calls are scoped to it |
-| `pack_repo` | Condense a local or remote repository via RepoMix and store it as a versioned snapshot in the `repositories` table |
+| `pack_repo` | Condense a remote repository via RepoMix and store it as a versioned snapshot in the `repositories` table (local paths are rejected — the server runs remotely on Fly.io) |
 | `query_data` | Execute operations against Athena: `list-tables` (schema discovery), `describe-tables` (column metadata), `execute-query` (SELECT and WITH/CTE queries permitted). Accepts optional `database` parameter to override the `ATHENA_DATABASE` env var per call. |
 
 ### Memory Types
@@ -296,7 +297,7 @@ Codifier exposes 6 tools via the MCP protocol:
 
 Skills are client-side, model-agnostic Agent workflows — markdown instruction files that the LLM reads locally. The LLM drives the conversation and calls MCP tools only for data operations. There is no server-side session state or protocol round-trips between steps.
 
-After running `npx codifier init`, Skills live in `.codifier/skills/` in your project. Slash commands in `.claude/commands/` (or the equivalent for your client) activate each Skill.
+After running `npx codifier init`, Skills live in `.codifier/skills/` in your project (or `skills/` at the project root for Cowork). Slash commands in `.claude/commands/` (or the equivalent for your client) activate each Skill.
 
 `skills/shared/codifier-tools.md` is a reference document covering all 6 MCP tools, their parameters, and usage patterns. Every Skill references it.
 
@@ -410,9 +411,15 @@ codifierMcp/
 │   │   └── auth-middleware.ts      # Bearer token authentication
 │   ├── datastore/
 │   │   ├── interface.ts            # IDataStore abstraction
+│   │   ├── types.ts                # Shared datastore types
 │   │   ├── factory.ts              # createDataStore() factory
 │   │   ├── supabase-datastore.ts   # Supabase implementation (default)
-│   │   └── atlassian-datastore.ts  # Confluence implementation (legacy)
+│   │   ├── supabase-client.ts      # Supabase client wrapper
+│   │   ├── supabase-types.ts       # Supabase type definitions
+│   │   ├── atlassian-datastore.ts  # Confluence implementation (legacy)
+│   │   ├── confluence-client.ts    # Confluence REST API client
+│   │   ├── confluence-types.ts     # Confluence type definitions
+│   │   └── content-parser.ts       # Content parsing utilities
 │   ├── mcp/
 │   │   ├── server.ts               # Registers exactly 6 tools
 │   │   ├── schemas.ts              # Zod schemas for tool parameters
@@ -434,7 +441,7 @@ codifierMcp/
 │       └── errors.ts               # Custom error classes
 ├── skills/
 │   ├── shared/
-│   │   └── codifier-tools.md       # All 5 MCP tools reference
+│   │   └── codifier-tools.md       # All 6 MCP tools reference
 │   ├── capture-session/
 │   │   └── SKILL.md
 │   ├── push-memory/

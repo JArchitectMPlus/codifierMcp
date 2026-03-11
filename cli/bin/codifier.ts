@@ -34,7 +34,7 @@ function validateClientType(value: string): ClientType {
 program
   .name('codifier')
   .description('Codifier MCP — install and manage AI skills for your project')
-  .version('2.0.0');
+  .version('2.2.2');
 
 program
   .command('init')
